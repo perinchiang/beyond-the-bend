@@ -77,6 +77,26 @@ diorama look, and adds what that lens needs: aerial haze so distance reads as di
 fitted to the lens's footprint, and a stippled dissolve for any tree crown that drifts between
 the lens and the car. Handling and input mapping are unchanged.
 
+### Handling
+
+A simple arcade model, tuned to be forgiving with all-or-nothing inputs (keys, touch buttons):
+
+- **Steering is wound on, not switched on.** A held key reaches full lock in about 0.3 s and
+  unwinds twice as fast. A quick tap therefore gives a small nudge (an 80 ms tap moves the car
+  about 0.35 m sideways over the next second, a 150 ms tap about 1 m) while a held key still
+  turns hard.
+- **The same key means the same thing at any speed.** Above walking pace the lock shrinks with
+  speed so that full lock asks for about 2 g of cornering — a 12 m bend at 15 m/s, a 36 m bend
+  flat out — and never more than 80°/s of rotation.
+- **A little weight.** The body follows the front wheels with a short lag rather than snapping.
+- **Grass slows the car gradually.** The verge is free; beyond it the car bogs down over about
+  0.7 s and frees itself in 0.25 s. Clipping the grass costs about 1 % of your speed, cutting
+  a corner for a second about 8 %, and staying out there settles at roughly two thirds of
+  road speed. Grip is slightly lower on grass.
+
+Acceleration, top speed and braking are as before. `npm run test:handling` measures all of
+this and laps the road with a tap-steering keyboard driver that has human reaction time.
+
 ## How the picture is made
 
 | Layer | Source |
@@ -99,6 +119,7 @@ node tools/observe.mjs        # drive a stretch on autopilot and tile the frames
 node tools/camera-test.mjs    # camera modes, presets, transitions, vehicle independence
 node tools/stability.mjs      # pan the camera a whole number of pixels and compare re-aligned frames
 npm run test:comfort          # view turning, what the lens does to distance and to turns, terrain profile
+npm run test:handling         # key taps, held keys, grass excursions, keyboard-driven laps (no browser needed)
 npm run test:mobile           # touch controls and desktop input at a mobile viewport (dev server required)
 ```
 
@@ -107,7 +128,7 @@ The browser tools read `BTB_URL` (default `http://127.0.0.1:5183/beyond-the-bend
 ## Known limitations
 
 - Desktop Chrome checks cover synthetic touch input and mobile-sized layouts. **Not tested on real iPhone Safari**; native multi-touch capture, notch safe areas and sustained performance still need device testing.
-- Driving is a deliberately simple arcade model with no collisions; trees and props are not solid.
+- Driving is a deliberately simple arcade model with no collisions and no sliding; trees and props are not solid.
 - In the Close view a tree crown between the lens and the car is thinned out in stipples rather
   than hidden cleanly, and the diorama's paper edge can show at the top of the frame as a pale sky.
 - Trees are not shadowed by other trees, there is no level-of-detail for foliage, and the leaf dabs
