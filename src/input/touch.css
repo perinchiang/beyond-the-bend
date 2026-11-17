@@ -1,0 +1,26 @@
+#touch-controls { display: none; position: fixed; inset: 0; pointer-events: none; color: #403a30; font: 600 12px/1.3 ui-rounded, system-ui, sans-serif; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+#touch-controls button, #touch-throttle { pointer-events: auto; touch-action: none; color: inherit; font: inherit; background: rgba(243,236,221,.66); border: 1px solid rgba(74,67,56,.25); border-radius: 14px; box-sizing: border-box; }
+#touch-controls button { min-width: 48px; min-height: 44px; padding: 10px; }
+#touch-controls button.pressed, #touch-controls button:active { background: rgba(218,203,172,.9); }
+#touch-controls button:disabled { opacity: .45; }
+.touch-steering { position: absolute; bottom: max(16px, env(safe-area-inset-bottom)); left: max(16px, env(safe-area-inset-left)); display: flex; gap: 10px; }
+#touch-controls .touch-steering button { width: 68px; height: 64px; font-size: 24px; }
+.touch-pedals { position: absolute; bottom: max(16px, env(safe-area-inset-bottom)); right: max(16px, env(safe-area-inset-right)); display: flex; align-items: flex-end; gap: 12px; }
+#touch-controls [data-hold="brake"] { width: 64px; height: 58px; }
+#touch-throttle { --throttle: 0; position: relative; width: 64px; height: clamp(130px, 43dvh, 210px); overflow: hidden; }
+.throttle-fill { position: absolute; inset: auto 0 0; height: calc(var(--throttle) * 100%); background: rgba(127,153,103,.3); pointer-events: none; }
+.throttle-thumb { position: absolute; left: 7px; right: 7px; bottom: calc(16px + var(--throttle) * (100% - 40px)); height: 6px; border-radius: 4px; background: #746b58; pointer-events: none; }
+.throttle-label { position: absolute; top: 12px; width: 100%; text-align: center; font-size: 10px; pointer-events: none; }
+.touch-camera { position: absolute; top: max(10px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); display: flex; gap: 8px; }
+@media (any-pointer: coarse) {
+  #touch-controls { display: block; }
+  #hud { display: none; }
+  #toast { top: max(62px, calc(env(safe-area-inset-top) + 52px)); max-width: 85vw; white-space: normal; text-align: center; }
+  #stats { right: auto; left: max(16px, env(safe-area-inset-left)); top: max(10px, env(safe-area-inset-top)); }
+}
+@media (max-width: 380px) {
+  #touch-controls .touch-steering button { width: 56px; }
+  .touch-steering, .touch-pedals { gap: 6px; }
+  #touch-controls [data-hold="brake"] { width: 56px; }
+  #touch-throttle { width: 56px; }
+}

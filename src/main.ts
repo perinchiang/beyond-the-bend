@@ -9,10 +9,12 @@ import { PAL, createPaintShared, stabiliseShadowFilter } from './render/paint';
 import { PostFX } from './render/post';
 import { CameraRig, DRIVE_PRESETS, DEFAULT_PRESET } from './camera';
 import { Car } from './vehicle/car';
+import { TouchControls } from './input/touch';
 
 const params = new URLSearchParams(location.search);
 const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d);
-const lowSpec = params.get('q') === 'low' || (params.get('q') !== 'high' && /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent));
+const mobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
+const lowSpec = params.get('q') === 'low' || (params.get('q') !== 'high' && mobile);
 
 const t0 = performance.now();
 const canvas = document.getElementById('view') as HTMLCanvasElement;
@@ -82,8 +84,13 @@ const hud = document.getElementById('hud')!;
 const hudCam = document.getElementById('hud-cam')!;
 const toast = document.getElementById('toast')!;
 if (params.get('hud') === '0') { hud.classList.add('hidden'); toast.classList.add('off'); }
+const touch = new TouchControls(
+  () => { rig.toggleMode(); announceCamera(); },
+  () => { rig.cyclePreset(); announceCamera(); },
+);
 let toastTimer = 0;
 function announceCamera(hint?: string) {
+  touch.updateCamera(rig.mode, rig.preset.name);
   const label = rig.mode === 'drive' ? `Driving camera · ${rig.preset.name}` : 'Free camera';
   hudCam.innerHTML = rig.mode === 'drive'
     ? `<b>C</b> — free camera &nbsp;·&nbsp; <b>V</b> — view: <b>${rig.preset.name}</b> <i>(${DRIVE_PRESETS.map((p) => p.name).join(' / ')})</i>`
@@ -103,12 +110,13 @@ addEventListener('keydown', (e) => {
   if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space'].includes(e.code)) e.preventDefault();
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
-addEventListener('blur', () => keys.clear());
+addEventListener('blur', () => { keys.clear(); drag = null; });
+document.addEventListener('visibilitychange', () => { if (document.hidden) { keys.clear(); drag = null; } });
 canvas.addEventListener('wheel', (e) => { e.preventDefault(); rig.zoom(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
-let drag: { x: number; y: number; pan: boolean } | null = null;
-canvas.addEventListener('pointerdown', (e) => { drag = { x: e.clientX, y: e.clientY, pan: e.shiftKey || e.button === 2 }; canvas.setPointerCapture(e.pointerId); });
+let drag: { pointerId: number; x: number; y: number; pan: boolean } | null = null;
+canvas.addEventListener('pointerdown', (e) => { if (drag) return; drag = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, pan: e.shiftKey || e.button === 2 }; canvas.setPointerCapture(e.pointerId); });
 canvas.addEventListener('pointermove', (e) => {
-  if (!drag) return;
+  if (!drag || drag.pointerId !== e.pointerId) return;
   const dx = e.clientX - drag.x, dy = e.clientY - drag.y;
   drag.x = e.clientX; drag.y = e.clientY;
   // In Driving mode these calls are ignored by the rig: the player cannot orbit, tilt, zoom or pan.
@@ -117,7 +125,9 @@ canvas.addEventListener('pointermove', (e) => {
     rig.panBy(-dx * mpp, (-dy * mpp) / Math.sin(rig.pitch));
   } else rig.orbit(-dx * 0.006, dy * 0.005);
 });
-canvas.addEventListener('pointerup', () => (drag = null));
+for (const event of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) {
+  canvas.addEventListener(event, e => { if (drag?.pointerId === e.pointerId) drag = null; });
+}
 canvas.addEventListener('contextmenu', (e) => e.preventDefault());
 
 // ---- resize ----
@@ -126,8 +136,8 @@ function resize() {
   const w = innerWidth, h = innerHeight;
   // cap the internal resolution: plenty for a painted look, and keeps big retina panels fluid
   const budget = lowSpec ? 1.6e6 : params.get('q') === 'high' ? 4.2e6 : 3.0e6;
-  pixelRatio = Math.min(devicePixelRatio || 1, 2, Math.sqrt(budget / (w * h)));
-  pixelRatio = num('dpr', pixelRatio);
+  pixelRatio = Math.min(devicePixelRatio || 1, mobile ? 1.5 : 2, Math.sqrt(budget / (w * h)));
+  pixelRatio = mobile ? Math.min(pixelRatio, Math.max(0.5, num('dpr', pixelRatio) || pixelRatio)) : num('dpr', pixelRatio);
   renderer.setPixelRatio(pixelRatio);
   renderer.setSize(w, h, false);
   post.setSize(Math.round(w * pixelRatio), Math.round(h * pixelRatio));
@@ -170,9 +180,9 @@ function frame(now: number) {
   renderer.info.reset();
 
   const input = {
-    throttle: (keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0),
-    steer: (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0),
-    brake: keys.has('Space'),
+    throttle: THREE.MathUtils.clamp(Math.max(touch.input.throttle, keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0), -1, 1),
+    steer: THREE.MathUtils.clamp(touch.input.steer + (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0), -1, 1),
+    brake: keys.has('Space') || touch.input.brake,
   };
   car.update(dt, input);
   rig.orbit(((keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0)) * dt * 1.4, ((keys.has('KeyR') ? 1 : 0) - (keys.has('KeyF') ? 1 : 0)) * dt * 0.9);
@@ -202,14 +212,14 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 }
 
-car.load('/models/car.glb').catch((e) => console.warn('[car] model not loaded', e)).finally(() => {
+car.load(import.meta.env.BASE_URL + 'models/car.glb').catch((e) => console.warn('[car] model not loaded', e)).finally(() => {
   placeAt(startS);
   initCamera();
   announceCamera();
   console.info(`[btb] world built in ${(performance.now() - t0).toFixed(0)} ms`, scatter.stats);
   // hooks for automated screenshots
   (window as any).__btb = {
-    ready: true, rig, car, track, post, hf, renderer, scene, sun,
+    ready: true, touch, rig, car, track, post, hf, renderer, scene, sun,
     /** GPU-synchronous timing of n frames, in ms per frame. */
     bench(n = 40) {
       const gl = renderer.getContext();

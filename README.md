@@ -10,7 +10,7 @@ Stack: Three.js (r187) · TypeScript · WebGL 2 · Vite · Blender Python → GL
 
 ```bash
 npm install
-npm run dev          # http://127.0.0.1:5183/
+npm run dev          # http://127.0.0.1:5183/beyond-the-bend/
 npm run build        # type-check + production bundle
 npm run car          # regenerate public/models/car.glb with Blender (needs `blender` on PATH)
 ```
@@ -76,8 +76,7 @@ node tools/stability.mjs      # pan the camera a whole number of pixels and comp
 
 ## Known limitations
 
-- Tested on one machine only (Apple M2, Chrome, macOS). **Not tested on any phone or tablet**;
-  `?q=low` exists and renders, but mobile performance and touch controls are unverified / absent.
+- Desktop Chrome checks cover synthetic touch input and mobile-sized layouts. **Not tested on real iPhone Safari**; native multi-touch capture, notch safe areas and sustained performance still need device testing.
 - Driving is a deliberately simple arcade model with no collisions; trees and props are not solid.
 - The Close driving view is still orthographic, so it is tighter and lower rather than a true
   perspective chase camera; low angles can let roadside trees cover the car in corners.
@@ -85,3 +84,51 @@ node tools/stability.mjs      # pan the camera a whole number of pixels and comp
   look blocky in extreme close-up.
 - Rocks are the weakest asset: plain faceted boulders.
 - One small world (400 m square), one biome, one car, no audio.
+
+## Play on mobile
+
+Public game: https://perinchiang.github.io/beyond-the-bend/
+Repository: https://github.com/perinchiang/beyond-the-bend
+
+Open the game in Safari and rotate to landscape; no installation is needed.
+Touch controls appear on devices with a coarse pointer:
+
+- Hold ◀ / ▶ at bottom-left to steer. Release to ease back toward neutral.
+- Touch the vertical throttle at right and slide up/down for 0–100% power.
+  Position determines power; releasing returns it to zero. Coasting still carries the car forward.
+- Hold **Brake** beside the throttle to slow down.
+- Steering, throttle and brake accept separate fingers simultaneously.
+- Tap **Driving / Free** at top-right to switch cameras. In Free mode, drag the scenery to orbit.
+- Tap **High / Normal / Close** to cycle the driving view. This button is disabled in Free mode.
+
+Keyboard controls are unchanged. Touch input resets on cancellation, capture loss, backgrounding,
+window blur and resize/rotation. Safe-area insets keep controls away from the notch/home indicator.
+On mobile the existing low-quality preset is selected by default (1024px shadows, existing reduced
+scatter/paint settings and tilt blur off); DPR is capped at 1.5 and rendering at 1.6 million pixels.
+The same painterly shader/post-processing pipeline is retained. Desktop quality defaults are unchanged.
+
+## Deployment
+
+The Pages workflow builds with Node 22 and npm ci, then publishes dist using GitHub's official
+Pages actions. Every push to main deploys; workflow_dispatch allows manual redeployment.
+Vite defaults to /beyond-the-bend/ locally. CI uses configure-pages' base_path, so the generated
+scripts, styles and car GLB share the correct Pages prefix. The GLB uses import.meta.env.BASE_URL.
+
+In repository **Settings → Pages → Build and deployment**, the source must be **GitHub Actions**.
+Actions must be enabled for this repository. The deploy job requires pages:write and id-token:write;
+if an organization restricts these, an administrator must allow the official Pages actions and
+approve the github-pages environment. Never publish credentials in the repository.
+
+For a local production check:
+
+    npm run typecheck
+    npm run build
+    npm run preview -- --port 5184
+    # Open http://127.0.0.1:5184/beyond-the-bend/
+
+The exported browser-context function in tools/mobile-check.mjs can be passed to a browser
+runner's page.evaluate after window.__btb.ready. It checks analog values reaching the vehicle,
+simultaneous inputs, independent releases, pointer cancellation/capture-loss events, blur/resize,
+camera buttons, desktop keys, camera/vehicle independence, control bounds and the GLB path.
+It temporarily stubs capture for synthetic pointers and forces coarse-pointer CSS for inspection;
+reload after running. It does not prove native Safari pointer capture or real-device performance.

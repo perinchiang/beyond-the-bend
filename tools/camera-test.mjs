@@ -6,7 +6,7 @@ const page = await browser.newPage({ viewport: { width: 1600, height: 900 }, dev
 const logs = [];
 page.on('console', (m) => { if (['error', 'warning'].includes(m.type())) logs.push(`[${m.type()}] ${m.text()}`); });
 page.on('pageerror', (e) => logs.push(`[pageerror] ${e.message}`));
-await page.goto('http://127.0.0.1:5183/?hud=0&dpr=1&t=20');
+await page.goto('http://127.0.0.1:5183/beyond-the-bend/?hud=0&dpr=1&t=20');
 await page.waitForFunction(() => window.__btb?.ready);
 
 // 1. the camera cannot influence the vehicle

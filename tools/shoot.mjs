@@ -4,7 +4,7 @@
 import { chromium } from 'playwright-core';
 import fs from 'node:fs';
 
-const BASE = process.env.BTB_URL ?? 'http://127.0.0.1:5183/';
+const BASE = process.env.BTB_URL ?? 'http://127.0.0.1:5183/beyond-the-bend/';
 const OUT = process.env.BTB_OUT ?? 'shots';
 const W = Number(process.env.BTB_W ?? 1600), H = Number(process.env.BTB_H ?? 900);
 const QUERY = process.env.BTB_QUERY ?? 'hud=0&t=20&dpr=1';
