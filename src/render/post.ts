@@ -3,9 +3,9 @@ import * as THREE from 'three';
 /**
  * Post chain: "miniature lens" + gentle grade + output conversion.
  *
- * With an orthographic camera, distance from the focal plane maps linearly to screen
- * height, so a blur that grows away from a horizontal focal band is a faithful and very
- * cheap stand-in for depth of field. The blur itself is computed at half resolution
+ * Looking down at the ground from behind the car, distance from the focal plane grows
+ * steadily with screen height, so a blur that grows away from a horizontal focal band is a
+ * very cheap stand-in for depth of field. The blur itself is computed at half resolution
  * (a quarter of the pixels) and blended in — affordable on integrated and mobile GPUs —
  * and the whole lens can be switched off.
  */

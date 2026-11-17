@@ -29,6 +29,7 @@ export const PAL = {
   sun: '#fff0d6',
   sky: '#a8bcf4',
   bounce: '#8f9a5e',
+  haze: '#d3e0e4',
 };
 
 const col = (hex: string) => new THREE.Color(hex);
@@ -165,6 +166,11 @@ export interface PaintShared {
   uDirt: THREE.IUniform<THREE.Color>;
   uDirtDark: THREE.IUniform<THREE.Color>;
   uCloud: THREE.IUniform<number>;
+  /** Aerial perspective: distance from the lens where haze starts / is complete, and its strength. */
+  uHaze: THREE.IUniform<THREE.Vector3>;
+  uHazeColor: THREE.IUniform<THREE.Color>;
+  /** Foliage closer to the lens than x is dissolved away entirely, beyond y it is solid. */
+  uLensFade: THREE.IUniform<THREE.Vector2>;
   [k: string]: THREE.IUniform;
 }
 
@@ -185,6 +191,9 @@ export function createPaintShared(renderer: THREE.WebGLRenderer, worldHalf: numb
     uDirt: { value: col(PAL.dirt) },
     uDirtDark: { value: col(PAL.dirtDark) },
     uCloud: { value: 0.24 },
+    uHaze: { value: new THREE.Vector3(1e6, 2e6, 0) },
+    uHazeColor: { value: col(PAL.haze) },
+    uLensFade: { value: new THREE.Vector2(0, 0) },
   };
 }
 
@@ -198,6 +207,9 @@ uniform float uWorldHalf;
 uniform vec3 uDirt;
 uniform vec3 uDirtDark;
 uniform float uCloud;
+uniform vec3 uHaze;
+uniform vec3 uHazeColor;
+uniform vec2 uLensFade;
 varying vec3 vWorldPos;
 
 vec2 rot2(vec2 p, float a) { float c = cos(a), s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }
@@ -225,6 +237,15 @@ vec3 dirtColor(vec2 p) {
 }
 `;
 
+// A crown that drifts between the lens and the car would fill a corner of the frame and
+// sweep across it. Thin it out in stipples instead, like the diorama's paper edge.
+const LENS_FADE = /* glsl */ `
+{
+  float lensDist = distance(cameraPosition, vWorldPos);
+  if (lensDist < uLensFade.y && hash21(floor(gl_FragCoord.xy * 0.5)) > smoothstep(uLensFade.x, uLensFade.y, lensDist)) discard;
+}
+`;
+
 export interface PaintOptions {
   /** Unique key so differently patched materials never share a compiled program. */
   key: string;
@@ -241,6 +262,8 @@ export interface PaintOptions {
   fragFinal?: string;
   /** Use the authored normal on both faces (foliage cards are lit as a volume). */
   volumeNormals?: boolean;
+  /** Dissolve this material where it stands between the lens and the car (driving views). */
+  lensFade?: boolean;
 }
 
 /**
@@ -267,14 +290,21 @@ export function paintMaterial<T extends THREE.Material>(mat: T, shared: PaintSha
       );
     let fs = shader.fragmentShader
       .replace('#include <common>', `#include <common>\n${COMMON_FRAG}\n${opt.fragPars ?? ''}`)
-      .replace('#include <color_fragment>', `#include <color_fragment>\n${opt.fragColor ?? ''}`)
+      .replace('#include <color_fragment>', `#include <color_fragment>\n${opt.lensFade ? LENS_FADE : ''}\n${opt.fragColor ?? ''}`)
       .replace(
         '#include <lights_fragment_end>',
         `#include <lights_fragment_end>
         reflectedLight.directDiffuse *= cloudShade(vWorldPos.xz);
         ${opt.fragLight ?? ''}`,
       )
-      .replace('#include <dithering_fragment>', `#include <dithering_fragment>\n${opt.fragFinal ?? ''}`);
+      .replace(
+        '#include <dithering_fragment>',
+        `#include <dithering_fragment>
+        // Aerial perspective: land far beyond the focal plane pales towards the sky, so
+        // distance reads as distance.
+        gl_FragColor.rgb = mix(gl_FragColor.rgb, uHazeColor, smoothstep(uHaze.x, uHaze.y, distance(cameraPosition, vWorldPos)) * uHaze.z);
+        ${opt.fragFinal ?? ''}`,
+      );
     if (opt.volumeNormals) {
       fs = fs.replace('#include <normal_fragment_begin>', `#include <normal_fragment_begin>\nnormal = normalize(vNormal);`);
     }

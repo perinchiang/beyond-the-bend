@@ -1,13 +1,20 @@
 import * as THREE from 'three';
 
 /**
- * Two camera modes on one orthographic "miniature lens":
+ * Two camera modes on one long "miniature lens":
  *
  *  - Driving: an elevated chase view locked behind the car. The player cannot orbit; they
- *    only pick one of three presets. A heading dead zone absorbs small corrections;
- *    larger turns use a damped, speed-limited yaw without catch-up acceleration.
+ *    only pick one of three presets. The view turns with the car through one critically
+ *    damped spring, so steering taps are filtered out and a corner is a single smooth sweep.
  *  - Free / photo: orbit, tilt, zoom and pan at will. It tracks the car's position but
  *    ignores its heading, so a composition holds while the car moves through it.
+ *
+ * The lens is a real (perspective) telephoto, not a parallel projection. A parallel view has
+ * no vanishing point and no size falloff, and the eye — which always assumes perspective —
+ * explains that by tipping the ground up: far land reads as a slope rising towards the
+ * viewer, the road as the floor of a bowl, and a turn as a turntable spinning under the car
+ * with the edges of the screen sweeping fastest. With a real lens the land lies flat and
+ * recedes, and a turn reads as the camera swinging round behind the car.
  *
  * The rig only ever READS the car's pose. Nothing here feeds back into the vehicle.
  */
@@ -24,23 +31,23 @@ export interface DrivePreset {
   anchor: number;
   /** Time constant (s) of the damped yaw follow. Longer is lazier; the wide view turns the gentlest. */
   yawTime: number;
+  /** Vertical field of view (degrees). The steep High view gets a little more lens so land still recedes. */
+  fov: number;
 }
 
+/** Vertical field of view of the lens (degrees): long enough to keep the miniature look. */
+export const LENS_FOV = 30;
+
 export const DRIVE_PRESETS: readonly DrivePreset[] = [
-  { name: 'High', pitch: 58, view: 66, anchor: 0.13, yawTime: 0.40 },
-  { name: 'Normal', pitch: 45, view: 44, anchor: 0.17, yawTime: 0.32 },
-  { name: 'Close', pitch: 28, view: 24, anchor: 0.20, yawTime: 0.26 },
+  { name: 'High', pitch: 55, view: 66, anchor: 0.13, yawTime: 0.60, fov: 36 },
+  { name: 'Normal', pitch: 40, view: 44, anchor: 0.18, yawTime: 0.52, fov: LENS_FOV },
+  { name: 'Close', pitch: 22, view: 24, anchor: 0.23, yawTime: 0.45, fov: LENS_FOV },
 ];
 export const DEFAULT_PRESET = 1;
 
 const DEG = Math.PI / 180;
 const PITCH_MIN = 22 * DEG, PITCH_MAX = 89 * DEG;
 const VIEW_MIN = 9, VIEW_MAX = 230;
-// Let the car turn within the frame before rotating the landscape. The rate and
-// acceleration caps prevent a large heading error from triggering a catch-up whip.
-const YAW_DEAD_ZONE = 12 * DEG;
-const YAW_MAX_RATE = 48 * DEG;
-const YAW_MAX_ACCEL = 42 * DEG;
 /** Time constant (s) for preset and mode changes: tilt, zoom and framing glide rather than cut. */
 const MOVE_TIME = 0.42;
 
@@ -62,7 +69,12 @@ function smoothDamp(cur: number, goal: number, vel: { v: number }, time: number,
 }
 
 export class CameraRig {
-  camera = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 900);
+  private persp = new THREE.PerspectiveCamera(LENS_FOV, 1, 1, 2000);
+  private flat = new THREE.OrthographicCamera(-1, 1, 1, -1, 1, 900);
+  /** Parallel projection, kept for capture tools that need pixel-exact pans. Not used in play. */
+  ortho = false;
+  /** Vertical field of view (degrees); eases between presets, held as-is by the free camera. */
+  fov = DRIVE_PRESETS[DEFAULT_PRESET].fov;
   /** Point on the ground at the centre of the screen. */
   target = new THREE.Vector3();
   yaw = 0;
@@ -83,16 +95,43 @@ export class CameraRig {
   private lead = 0; // metres the view centre sits ahead of the car
   private vPitch = { v: 0 };
   private vView = { v: 0 };
+  private vFov = { v: 0 };
   private vLead = { v: 0 };
   private vPanX = { v: 0 };
   private vPanY = { v: 0 };
-  private driveYaw = 0; // unwrapped heading goal, held inside the dead zone
-  private yawRate = 0;
+  private vYaw = { v: 0 };
   private aspect = 1;
 
+  get camera(): THREE.PerspectiveCamera | THREE.OrthographicCamera { return this.ortho ? this.flat : this.persp; }
   get preset(): DrivePreset { return DRIVE_PRESETS[this.presetIndex]; }
   get viewWidth() { return this.viewHeight * this.aspect; }
+  /** Distance from the lens to the focal point: `viewHeight` is what the lens frames there. */
+  get distance() { return this.ortho ? 400 : this.viewHeight / (2 * Math.tan((this.fov * DEG) / 2)); }
   setAspect(a: number) { this.aspect = a; }
+
+  /**
+   * Smallest circle on the ground plane through the focal point that holds everything the
+   * lens can see (rays near the horizon are cut off at `maxReach`). Returns its radius.
+   */
+  footprint(centre: THREE.Vector3, maxReach = 240): number {
+    const sp = Math.sin(this.pitch), cp = Math.cos(this.pitch);
+    let aFar: number, aNear: number, wFar: number, wNear: number; // along the view / half width
+    if (this.ortho) {
+      aFar = this.viewHeight / (2 * sp); aNear = -aFar; wFar = wNear = this.viewWidth / 2;
+    } else {
+      const t = Math.tan((this.fov * DEG) / 2), dist = this.distance, h = dist * sp;
+      const edge = (e: number): [number, number] => {
+        const k = h / Math.max(sp - e * t * cp, 1e-3);
+        const a = Math.min((cp + e * t * sp) * k - dist * cp, maxReach);
+        return [a, t * this.aspect * Math.min(k, (a + dist * cp) / Math.max(cp + e * t * sp, 1e-3))];
+      };
+      [aFar, wFar] = edge(1);
+      [aNear, wNear] = edge(-1);
+    }
+    const c = THREE.MathUtils.clamp((aFar * aFar + wFar * wFar - aNear * aNear - wNear * wNear) / (2 * (aFar - aNear)), aNear, aFar);
+    centre.set(this.target.x - Math.sin(this.yaw) * c, this.target.y, this.target.z - Math.cos(this.yaw) * c);
+    return Math.max(Math.hypot(aFar - c, wFar), Math.hypot(c - aNear, wNear));
+  }
 
   setMode(mode: CameraMode) {
     if (mode === this.mode) return;
@@ -107,10 +146,10 @@ export class CameraRig {
       this.panNow.copy(this.pan);
       this.lead = 0;
       this.vLead.v = 0;
-    } else this.driveYaw = this.yaw;
-    this.yawRate = 0;
+    }
+    this.vYaw.v = 0;
     this.vPanX.v = this.vPanY.v = 0;
-    this.vPitch.v = this.vView.v = 0;
+    this.vPitch.v = this.vView.v = this.vFov.v = 0;
     this.fixed = null;
   }
 
@@ -153,14 +192,14 @@ export class CameraRig {
     this.yaw = this.yawT = yawDeg * DEG;
     this.pitch = this.pitchT = pitchDeg * DEG;
     this.viewHeight = this.viewT = view;
+    this.fov = LENS_FOV;
     this.pan.set(0, 0);
     this.panNow.set(0, 0);
     this.fixed = fixed ? fixed.clone() : null;
   }
 
   setDrive(presetIndex = this.presetIndex) {
-    this.driveYaw = this.yaw;
-    this.yawRate = 0;
+    this.vYaw.v = 0;
     this.mode = 'drive';
     this.presetIndex = presetIndex;
     this.fixed = null;
@@ -178,30 +217,30 @@ export class CameraRig {
       const p = this.preset;
       const pitchGoal = p.pitch * DEG;
       // Sit behind the car, taking the short way round.
+      const yawGoal = this.yaw + wrapAngle(carHeading + Math.PI - this.yaw);
       if (snap) {
-        this.yaw += wrapAngle(carHeading + Math.PI - this.yaw);
-        this.driveYaw = this.yaw;
-        this.yawRate = 0;
+        this.yaw = yawGoal;
+        this.vYaw.v = 0;
         this.pitch = pitchGoal;
         this.viewHeight = p.view;
-        this.vPitch.v = this.vView.v = 0;
+        this.fov = p.fov;
+        this.vPitch.v = this.vView.v = this.vFov.v = 0;
       } else {
-        const headingYaw = carHeading + Math.PI;
-        const error = wrapAngle(headingYaw - this.driveYaw);
-        if (Math.abs(error) > YAW_DEAD_ZONE) this.driveYaw = headingYaw - Math.sign(error) * YAW_DEAD_ZONE;
-        const yawError = wrapAngle(this.driveYaw - this.yaw);
-        // Critically damped angular follow with explicit acceleration and rate ceilings.
-        // Damping uses current angular velocity, so the camera sheds speed before the target
-        // instead of snapping or swinging past it.
-        const omega = 2 / p.yawTime;
-        const acceleration = THREE.MathUtils.clamp(omega * omega * yawError - 3.2 * omega * this.yawRate, -YAW_MAX_ACCEL, YAW_MAX_ACCEL);
-        this.yawRate = THREE.MathUtils.clamp(this.yawRate + acceleration * dt, -YAW_MAX_RATE, YAW_MAX_RATE);
-        this.yaw += this.yawRate * dt;
+        // One critically damped spring from rest to rest: it cannot overshoot, it has no
+        // threshold at which the landscape suddenly starts or stops turning, and it passes
+        // only a fraction of a quick steering correction on to the view.
+        // A big swing — returning from the free camera, or a spin on the grass — is taken
+        // more slowly still, so the landscape never whips round.
+        const far = THREE.MathUtils.smoothstep(Math.abs(yawGoal - this.yaw), 40 * DEG, 140 * DEG);
+        this.yaw = smoothDamp(this.yaw, yawGoal, this.vYaw, p.yawTime * (1 + 1.2 * far), dt);
         this.pitch = smoothDamp(this.pitch, pitchGoal, this.vPitch, MOVE_TIME, dt);
         this.viewHeight = Math.exp(smoothDamp(Math.log(this.viewHeight), Math.log(p.view), this.vView, MOVE_TIME, dt)); // zoom in log space
+        this.fov = smoothDamp(this.fov, p.fov, this.vFov, MOVE_TIME, dt);
       }
-      // Put the car below centre so more road shows ahead of it.
-      leadGoal = (p.anchor * p.view) / Math.sin(pitchGoal);
+      // Put the car below centre so more road shows ahead of it. Through a real lens the
+      // ground nearer the camera is magnified, which the second term accounts for.
+      const lens = this.ortho ? 0 : 2 * p.anchor * Math.tan((p.fov * DEG) / 2) * Math.cos(pitchGoal);
+      leadGoal = (p.anchor * p.view) / (Math.sin(pitchGoal) + lens);
     } else {
       const k = ease(7, dt, snap);
       this.yaw += (this.yawT - this.yaw) * k;
@@ -232,13 +271,21 @@ export class CameraRig {
     }
 
     const c = this.camera;
-    const hh = this.viewHeight / 2, hw = hh * this.aspect;
-    c.left = -hw; c.right = hw; c.top = hh; c.bottom = -hh;
+    const dist = this.distance;
+    if (c instanceof THREE.OrthographicCamera) {
+      const hh = this.viewHeight / 2, hw = hh * this.aspect;
+      c.left = -hw; c.right = hw; c.top = hh; c.bottom = -hh;
+    } else {
+      c.fov = this.fov;
+      c.aspect = this.aspect;
+      c.near = Math.max(0.5, dist * 0.05);
+      c.far = dist + 900;
+    }
     const cp = Math.cos(this.pitch), sp = Math.sin(this.pitch);
     c.position.set(
-      this.target.x + Math.sin(this.yaw) * cp * 400,
-      this.target.y + sp * 400,
-      this.target.z + Math.cos(this.yaw) * cp * 400,
+      this.target.x + Math.sin(this.yaw) * cp * dist,
+      this.target.y + sp * dist,
+      this.target.z + Math.cos(this.yaw) * cp * dist,
     );
     c.up.set(0, 1, 0);
     c.lookAt(this.target);

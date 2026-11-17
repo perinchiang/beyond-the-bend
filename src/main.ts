@@ -54,6 +54,7 @@ const car = new Car(hf, shared);
 scene.add(car.root);
 
 const rig = new CameraRig();
+rig.ortho = params.get('lens') === 'ortho'; // parallel projection, for capture tools only
 const post = new PostFX(renderer, lowSpec ? 10 : 16, num('msaa', 4));
 renderer.info.autoReset = false;
 post.setTilt(num('tilt', lowSpec ? 0 : 1));
@@ -66,7 +67,7 @@ function placeAt(s: number) {
 }
 placeAt(startS);
 // Camera: Driving / Normal by default. `?cam=free` (optionally with yaw, pitch, zoom, x, z) starts in photo mode.
-const lens = { focus: 0.47, inner: 0.17 };
+const lens = { focus: 0.47, inner: 0.17, fade: 0 };
 function initCamera() {
   if (params.get('cam') === 'free' || params.has('x')) {
     const fixed = params.has('x') && params.has('z') ? new THREE.Vector3(num('x', 0), hf.height(num('x', 0), num('z', 0)), num('z', 0)) : undefined;
@@ -75,6 +76,7 @@ function initCamera() {
   rig.update(0, car.position, car.heading, true);
   lens.focus = rig.mode === 'drive' ? 0.57 : 0.47;
   lens.inner = rig.mode === 'drive' ? 0.27 : 0.17;
+  lens.fade = rig.mode === 'drive' && !rig.ortho ? 1 : 0;
 }
 initCamera();
 
@@ -150,13 +152,14 @@ resize();
 const lightRight = new THREE.Vector3(), lightUp = new THREE.Vector3(), tmp = new THREE.Vector3();
 lightRight.crossVectors(new THREE.Vector3(0, 1, 0), SUN_DIR).normalize();
 lightUp.crossVectors(SUN_DIR, lightRight).normalize();
+const seen = new THREE.Vector3();
 function fitShadow() {
-  const ground = rig.viewHeight / Math.sin(rig.pitch);
-  const ext = THREE.MathUtils.clamp(Math.max(rig.viewWidth, ground) * 0.6 + 12, 16, 150);
+  // cover the patch of ground the lens can see, plus room for shadows cast into it
+  const ext = THREE.MathUtils.clamp(rig.footprint(seen) + 12, 16, 150);
   // quantise the extent so zooming does not continuously re-scale texels
   const half = Math.pow(2, Math.ceil(Math.log2(ext) * 4) / 4);
   const texel = (half * 2) / SHADOW_SIZE;
-  const c = rig.target;
+  const c = seen;
   const r = Math.round(c.dot(lightRight) / texel) * texel, u = Math.round(c.dot(lightUp) / texel) * texel, f = c.dot(SUN_DIR);
   tmp.copy(lightRight).multiplyScalar(r).addScaledVector(lightUp, u).addScaledVector(SUN_DIR, f);
   sun.target.position.copy(tmp);
@@ -194,6 +197,10 @@ function frame(now: number) {
   // The camera only reads the car's pose; it never writes anything back to the vehicle.
   rig.update(dt, car.position, car.heading);
   fitShadow();
+  shared.uHaze.value.set(rig.distance * 1.15, rig.distance * 3.4, rig.ortho ? 0 : num('haze', 0.42));
+  // Driving only: photo mode keeps its foreground.
+  lens.fade += ((rig.mode === 'drive' && !rig.ortho ? 1 : 0) - lens.fade) * (1 - Math.exp(-dt * 3));
+  shared.uLensFade.value.set(rig.distance * 0.42 * lens.fade, rig.distance * 0.62 * lens.fade);
   post.setZoom(rig.viewHeight);
   // Lens focus: photo mode keeps the band around mid-frame; driving slides it up the screen
   // so the car and the road ahead of it stay crisp. Eased, like every other camera change.
@@ -239,6 +246,7 @@ car.load(import.meta.env.BASE_URL + 'models/car.glb').catch((e) => console.warn(
       rig.update(0, car.position, car.heading, true);
       lens.focus = rig.mode === 'drive' ? 0.57 : 0.47;
       lens.inner = rig.mode === 'drive' ? 0.27 : 0.17;
+      lens.fade = rig.mode === 'drive' && !rig.ortho ? 1 : 0;
       announceCamera();
     },
     /**
