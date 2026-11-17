@@ -68,6 +68,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     vertexPars: 'attribute float aSway;',
     vertexMain: swayVertex,
     volumeNormals: true,
+    lensFade: true,
     fragColor: /* glsl */ `
       {
         // the same paper tooth as the ground, so foliage belongs to the same painting

@@ -9,7 +9,8 @@ import fs from 'node:fs';
 const W = 1600, H = 900, SHIFT = Number(process.env.SHIFT ?? 48);
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--use-angle=metal', '--enable-gpu', '--ignore-gpu-blocklist'] });
 const page = await browser.newPage({ viewport: { width: W, height: H }, deviceScaleFactor: 1 });
-await page.goto('http://127.0.0.1:5183/beyond-the-bend/?hud=0&dpr=1&t=20&tilt=0');
+// lens=ortho: only a parallel projection turns a pan into an exact whole-pixel shift
+await page.goto(`${process.env.BTB_URL ?? 'http://127.0.0.1:5183/beyond-the-bend/'}?hud=0&dpr=1&t=20&tilt=0&lens=ortho`);
 await page.waitForFunction(() => window.__btb?.ready);
 fs.mkdirSync('shots', { recursive: true });
 const yaw = 38, zoom = 46, x0 = 40, z0 = 96;

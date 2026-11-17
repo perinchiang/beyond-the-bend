@@ -8,7 +8,7 @@ try {
   const errors = [];
   page.on('pageerror', error => errors.push(error.message));
   page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
-  await page.goto('http://127.0.0.1:5183/beyond-the-bend/?s=100');
+  await page.goto(`${process.env.BTB_URL ?? 'http://127.0.0.1:5183/beyond-the-bend/'}?s=100`);
   await page.waitForFunction(() => window.__btb?.ready && window.__btb.car.isReady, null, { timeout: 60000 });
   const source = fs.readFileSync(new URL('./mobile-check.mjs', import.meta.url), 'utf8')
     .replace('export default async function checkMobileControls()', 'async function checkMobileControls()') + String.fromCharCode(10) + 'return await checkMobileControls();';
