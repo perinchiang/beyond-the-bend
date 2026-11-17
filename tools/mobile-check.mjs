@@ -31,7 +31,7 @@ export default async function checkMobileControls() {
     pointer(left, 'pointerdown', 1);
     pointer(throttle, 'pointerdown', 2, y(.5));
     await frame();
-    check('Simultaneous steering + 50% analog throttle reaches vehicle', applied.steer === -1 && Math.abs(applied.throttle - .5) < .01);
+    check('Simultaneous steering + 50% analog throttle reaches vehicle', applied.steer === 1 && Math.abs(applied.throttle - .5) < .01);
     pointer(throttle, 'pointermove', 2, y(.8));
     check('Dragging continuously adjusts throttle to 80%', Math.abs(b.touch.input.throttle - .8) < .01);
     pointer(throttle, 'pointerdown', 3, y(0));
@@ -67,7 +67,7 @@ export default async function checkMobileControls() {
     for (let i = 0; i < 3; i++) { root.querySelector('#touch-preset').click(); presets.push(b.rig.preset.name); }
     check('Touch cycles Close / High / Normal', presets.join() === 'Close,High,Normal');
     key('keydown', 'KeyW'); key('keydown', 'KeyD'); await frame();
-    check('Desktop W+D remains functional', applied.throttle === 1 && applied.steer === 1);
+    check('Desktop W+D remains functional', applied.throttle === 1 && applied.steer === -1);
     key('keyup', 'KeyW'); key('keyup', 'KeyD'); key('keydown', 'Space'); await frame();
     check('Desktop brake and key release remain functional', applied.throttle === 0 && applied.steer === 0 && applied.brake);
     key('keyup', 'Space'); key('keydown', 'KeyC'); key('keyup', 'KeyC');

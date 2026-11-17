@@ -181,7 +181,9 @@ function frame(now: number) {
 
   const input = {
     throttle: THREE.MathUtils.clamp(Math.max(touch.input.throttle, keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0), -1, 1),
-    steer: THREE.MathUtils.clamp(touch.input.steer + (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0), -1, 1),
+    // The vehicle's positive steering angle is its visual left turn in the driving view.
+    // Keep controls named from the player's perspective: left input must turn left on screen.
+    steer: -THREE.MathUtils.clamp(touch.input.steer + (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0), -1, 1),
     brake: keys.has('Space') || touch.input.brake,
   };
   car.update(dt, input);
