@@ -37,6 +37,36 @@ const WHEELBASE = 2.42;
 const TRACK = 1.5;
 const WHEEL_RADIUS = 0.335;
 
+// ---- handling ----
+const TOP_SPEED = 27; // m/s on asphalt
+/** Front-wheel angle at full lock (rad): what a held key reaches at parking speeds. */
+const STEER_LOCK = 0.56;
+/**
+ * Cornering (m/s²) that full lock asks for once the car is moving. Above walking pace the
+ * lock shrinks with speed squared so that a held key always means "this much cornering",
+ * not "this much wheel angle" — the same input gives the same push at 10 m/s and at 27.
+ */
+const GRIP = 20;
+/**
+ * Keys are all-or-nothing, so the wheel is wound on at a steady rate and unwound faster.
+ * A quick tap therefore only reaches a fraction of the lock (a nudge), a held key gets all
+ * of it in about a third of a second, and letting go straightens the car promptly.
+ */
+const STEER_IN = 3.6; // lock fractions per second while turning in
+const STEER_OUT = 6.5; // ... and while coming back towards centre
+/** However slow the car is going, a held key never spins it faster than this (rad/s). */
+const YAW_MAX = 1.4;
+/** The body takes a moment to follow the front wheels: a little weight, no snap. */
+const YAW_LAG = 0.06; // s
+/** Grass begins just past the verge and is "deep" a couple of metres further out. */
+const GRASS_START = ROAD_HALF_WIDTH + 0.6, GRASS_FULL = ROAD_HALF_WIDTH + 3.0;
+/** The car bogs down gradually and frees itself quickly, so clipping a corner costs little. */
+const GRASS_IN = 0.7, GRASS_OUT = 0.25; // s
+const ROAD_DRAG = 0.35, GRASS_DRAG = 0.27, COAST_DRAG = 0.55; // 1/s
+/** Grass is a little looser under the tyres. */
+const GRASS_GRIP = 0.85;
+const smoothstep = (a: number, b: number, x: number) => { const t = THREE.MathUtils.clamp((x - a) / (b - a), 0, 1); return t * t * (3 - 2 * t); };
+
 export class Car {
   root = new THREE.Group();
   /** Tilts with the ground; holds body + wheels. */
@@ -49,7 +79,10 @@ export class Car {
   z = 0;
   heading = 0;
   speed = 0;
-  private steer = 0;
+  private steer = 0; // front-wheel angle driving the motion (rad)
+  private steerIn = 0; // how far the wheel is wound on, -1..1
+  private curve = 0; // path curvature the body is actually following (1/m)
+  private grass = 0; // 0 on the road .. 1 bogged down in grass
   private spinAngle = 0;
   private roll = 0;
   private pitch = 0;
@@ -165,7 +198,8 @@ export class Car {
   /** Teleport and clear every smoothed state, so repeated placements are deterministic. */
   place(x: number, z: number, heading: number) {
     this.x = x; this.z = z; this.heading = heading; this.speed = 0;
-    this.steer = 0; this.roll = 0; this.pitch = 0; this.spinAngle = 0;
+    this.steer = 0; this.steerIn = 0; this.curve = 0; this.grass = 0;
+    this.roll = 0; this.pitch = 0; this.spinAngle = 0;
     this.groundY = this.hf.surface(x, z);
     this.upSm.set(0, 1, 0);
     this.update(0, { throttle: 0, steer: 0, brake: false }, true);
@@ -173,21 +207,30 @@ export class Car {
 
   /** Deliberately simple arcade motion: enough to tour the scene, not a handling model. */
   update(dt: number, input: CarInput, snap = false) {
-    const onRoad = this.hf.roadDist(this.x, this.z) < ROAD_HALF_WIDTH + 0.6;
-    const vmax = onRoad ? 27 : 15;
+    // Surface: asphalt and verge are free; grass slows the car, but only as it sinks in.
+    const ground = smoothstep(GRASS_START, GRASS_FULL, this.hf.roadDist(this.x, this.z));
+    this.grass += (ground - this.grass) * (snap ? 1 : 1 - Math.exp(-dt / (ground > this.grass ? GRASS_IN : GRASS_OUT)));
+
     if (input.throttle > 0) this.speed += (this.speed < 0 ? 22 : 11) * dt * input.throttle;
     else if (input.throttle < 0) this.speed += (this.speed > 0 ? 24 : 7) * dt * input.throttle;
     if (input.brake) this.speed -= Math.sign(this.speed) * Math.min(Math.abs(this.speed), 30 * dt);
-    const drag = (onRoad ? 0.35 : 1.1) + (input.throttle === 0 ? 0.55 : 0);
+    const drag = ROAD_DRAG + GRASS_DRAG * this.grass + (input.throttle === 0 ? COAST_DRAG : 0);
     this.speed -= this.speed * drag * dt;
-    this.speed = THREE.MathUtils.clamp(this.speed, -8, vmax + 2);
-    if (this.speed > vmax) this.speed -= (this.speed - vmax) * 3 * dt;
+    this.speed = THREE.MathUtils.clamp(this.speed, -8, TOP_SPEED + 2);
+    if (this.speed > TOP_SPEED) this.speed -= (this.speed - TOP_SPEED) * 3 * dt;
     if (Math.abs(this.speed) < 0.03 && input.throttle === 0) this.speed = 0;
 
-    const maxSteer = THREE.MathUtils.lerp(0.56, 0.11, Math.min(1, Math.abs(this.speed) / 26));
-    const steerT = input.steer * maxSteer;
-    this.steer += (steerT - this.steer) * (1 - Math.exp(-dt * 9));
-    const yawRate = (this.speed * Math.tan(this.steer)) / WHEELBASE;
+    // Steering: wind the wheel towards the key, faster when heading back to centre.
+    const want = THREE.MathUtils.clamp(input.steer, -1, 1);
+    const turningIn = want * this.steerIn >= 0 && Math.abs(want) > Math.abs(this.steerIn);
+    const step = (turningIn ? STEER_IN : STEER_OUT) * dt;
+    this.steerIn += THREE.MathUtils.clamp(want - this.steerIn, -step, step);
+    const grip = GRIP * (1 - (1 - GRASS_GRIP) * this.grass);
+    const v = Math.max(Math.abs(this.speed), 0.1);
+    const lock = Math.min(STEER_LOCK, Math.atan((WHEELBASE * YAW_MAX) / v), Math.atan((WHEELBASE * grip) / (v * v)));
+    this.steer = this.steerIn * lock;
+    this.curve += (Math.tan(this.steer) / WHEELBASE - this.curve) * (snap ? 1 : 1 - Math.exp(-dt / YAW_LAG));
+    const yawRate = this.speed * this.curve;
     this.heading += yawRate * dt;
     const fx = Math.sin(this.heading), fz = Math.cos(this.heading);
     let nx = this.x + fx * this.speed * dt, nz = this.z + fz * this.speed * dt;
@@ -234,7 +277,8 @@ export class Car {
 
     this.spinAngle += (this.speed * dt) / WHEEL_RADIUS;
     for (const w of this.wheels) {
-      w.pivot.rotation.y = w.front ? this.steer : 0;
+      // Shown wheel angle keeps its familiar range, so a key press stays readable at speed.
+      w.pivot.rotation.y = w.front ? this.steerIn * THREE.MathUtils.lerp(0.56, 0.11, Math.min(1, Math.abs(this.speed) / 26)) : 0;
       w.spin.rotation.z = -this.spinAngle;
     }
   }
