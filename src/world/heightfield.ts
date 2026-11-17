@@ -9,7 +9,7 @@ const FIELD_RES = 0.8; // metres per cell of the road distance field
 const FIELD_N = Math.round((WORLD_HALF * 2) / FIELD_RES);
 const FIELD_MAX = 40; // distances are clamped to this
 const VERGE = 2.2; // flat shoulder beside the asphalt (m)
-const BLEND = 15; // width over which cut/fill eases back into the natural hills (m)
+const BLEND = 22; // spread road cut/fill into a broad, shallow transition (m)
 const SEED = 91;
 
 /** Natural rolling hills before the road is cut in. */
@@ -40,10 +40,14 @@ export function buildHeightField(track: Track): HeightField {
   const { samples } = track;
   const n = samples.length;
 
-  // Road profile: follow the natural hills, low-passed so gradients stay gentle.
+  // Road profile: follow the natural hills with one short low-pass pass, removing
+  // spline-scale grade changes without cutting long flat ramps into the terrain.
   let prof = samples.map((s) => naturalHeight(s.x, s.z));
-  const win = Math.round(22 / (track.length / n));
-  for (let pass = 0; pass < 3; pass++) {
+  // The former three 22 m passes over-smoothed the profile: it followed the hills from
+  // far away, creating cut slopes that read as a continuous trench. A single, narrower
+  // pass preserves broad grades while filtering spline-scale bumps.
+  const win = Math.round(18 / (track.length / n));
+  for (let pass = 0; pass < 1; pass++) {
     const next = new Array<number>(n);
     let acc = 0;
     for (let k = -win; k <= win; k++) acc += prof[(k + n) % n];
@@ -92,6 +96,7 @@ export function buildHeightField(track: Track): HeightField {
     const d = roadDist(x, z);
     if (d >= ROAD_HALF_WIDTH + VERGE + BLEND) return nat;
     const w = 1 - smoothstep(ROAD_HALF_WIDTH + VERGE, ROAD_HALF_WIDTH + VERGE + BLEND, d);
+    // Keep the terrain slightly below the asphalt so the two surfaces never z-fight.
     return mix(nat, sample(rh, x, z) - 0.09, w);
   };
 

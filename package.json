@@ -11,6 +11,8 @@
     "car": "blender -b --python tools/blender/build_car.py -- public/models/car.glb",
     "shots": "node tools/shoot.mjs",
     "test:camera": "node tools/camera-test.mjs",
+    "test:comfort": "node tools/run-comfort.mjs",
+    "test:mobile": "node tools/mobile-browser-check.mjs",
     "test:stability": "node tools/stability.mjs"
   },
   "dependencies": {

@@ -35,9 +35,9 @@ URL options: `?cam=free`, `?preset=0|1|2`, `?s=<metres along the road>`, `?q=low
 Both modes use the same orthographic "miniature" lens.
 
 - **Driving (default)** — locked behind the car; the road runs up the screen and the car sits a
-  little below centre. No orbit, tilt, zoom or pan: the rig ignores those inputs. Yaw follows the
-  car's heading through a critically damped filter, so the view glides through corners and only
-  tightens if the tail starts to swing away. Presets:
+  little below centre. No orbit, tilt, zoom or pan: the rig ignores those inputs. Horizontal camera
+  follow is immediate; a 12° heading dead zone lets the car move through small corrections before
+  the camera turns, and the larger turn is rate/acceleration limited. Presets:
 
   | preset | tilt | view height | car position | yaw time constant |
   |---|---|---|---|---|
@@ -45,12 +45,15 @@ Both modes use the same orthographic "miniature" lens.
   | Normal (default) | 45° | 44 m | 17 % below centre | 0.32 s |
   | Close | 28° | 24 m | 20 % below centre | 0.26 s |
 
-- **Free / photo** — orbit, tilt, zoom and pan. It tracks the car's position but not its heading.
+- **Free / photo** — orbit, tilt, zoom and pan. It follows the car's horizontal position immediately,
+  smooths only height over grade changes, and does not track its heading.
   Entering it changes nothing on screen (the driving pose is handed over as-is); leaving it eases
   back behind the car.
 
 The camera only reads the car's pose. `tools/camera-test.mjs` replays a fixed input script with and
 without constant mode/preset switching and checks the vehicle ends in a bit-identical state.
+
+Camera behavior was reviewed against gameplay footage from [art of rally](https://store.steampowered.com/app/550320/art_of_rally/) and [Absolute Drift](https://store.steampowered.com/app/320140/Absolute_Drift/). Both keep the route readable and the car legible despite using different camera styles. This game retains its orthographic diorama and three driving presets, while using stable horizontal tracking, restrained world rotation and predictable road visibility as reference principles. Handling and input mapping remain unchanged.
 
 ## How the picture is made
 
@@ -72,6 +75,9 @@ without constant mode/preset switching and checks the vehicle ends in a bit-iden
 npm run shots                 # capture review screenshots into shots/ (needs dev server + Chrome)
 node tools/camera-test.mjs    # camera modes, presets, transitions, vehicle independence
 node tools/stability.mjs      # pan the camera a whole number of pixels and compare re-aligned frames
+npm run test:comfort          # straight, gentle, sharp, S-bend and terrain-profile checks
+npm run test:mobile           # touch controls and desktop input at a mobile viewport (dev server required)
+npm run test:comfort          # straight, gentle, sharp, S-bend and terrain-profile checks
 ```
 
 ## Known limitations

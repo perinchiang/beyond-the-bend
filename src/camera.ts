@@ -4,8 +4,8 @@ import * as THREE from 'three';
  * Two camera modes on one orthographic "miniature lens":
  *
  *  - Driving: an elevated chase view locked behind the car. The player cannot orbit; they
- *    only pick one of three presets. Yaw follows the car's heading through a damped filter,
- *    so the view glides round corners instead of snapping with every steering input.
+ *    only pick one of three presets. A heading dead zone absorbs small corrections;
+ *    larger turns use a damped, speed-limited yaw without catch-up acceleration.
  *  - Free / photo: orbit, tilt, zoom and pan at will. It tracks the car's position but
  *    ignores its heading, so a composition holds while the car moves through it.
  *
@@ -36,8 +36,11 @@ export const DEFAULT_PRESET = 1;
 const DEG = Math.PI / 180;
 const PITCH_MIN = 22 * DEG, PITCH_MAX = 89 * DEG;
 const VIEW_MIN = 9, VIEW_MAX = 230;
-/** Beyond this yaw error the follow tightens so the car's tail never swings out of view. */
-const YAW_SLACK = 0.5;
+// Let the car turn within the frame before rotating the landscape. The rate and
+// acceleration caps prevent a large heading error from triggering a catch-up whip.
+const YAW_DEAD_ZONE = 12 * DEG;
+const YAW_MAX_RATE = 48 * DEG;
+const YAW_MAX_ACCEL = 42 * DEG;
 /** Time constant (s) for preset and mode changes: tilt, zoom and framing glide rather than cut. */
 const MOVE_TIME = 0.42;
 
@@ -76,15 +79,15 @@ export class CameraRig {
   private panNow = new THREE.Vector2();
   private fixed: THREE.Vector3 | null = null; // photo target detached from the car (tools only)
 
-  private focus = new THREE.Vector3(); // smoothed car position
+  private focus = new THREE.Vector3(); // exact horizontal follow, filtered ground elevation
   private lead = 0; // metres the view centre sits ahead of the car
-  private vYaw = { v: 0 };
   private vPitch = { v: 0 };
   private vView = { v: 0 };
   private vLead = { v: 0 };
   private vPanX = { v: 0 };
   private vPanY = { v: 0 };
-  private settle = 0; // seconds left of a mode change, during which the yaw swings round unhurriedly
+  private driveYaw = 0; // unwrapped heading goal, held inside the dead zone
+  private yawRate = 0;
   private aspect = 1;
 
   get preset(): DrivePreset { return DRIVE_PRESETS[this.presetIndex]; }
@@ -104,9 +107,10 @@ export class CameraRig {
       this.panNow.copy(this.pan);
       this.lead = 0;
       this.vLead.v = 0;
-    } else this.settle = 1.6;
+    } else this.driveYaw = this.yaw;
+    this.yawRate = 0;
     this.vPanX.v = this.vPanY.v = 0;
-    this.vYaw.v = this.vPitch.v = this.vView.v = 0;
+    this.vPitch.v = this.vView.v = 0;
     this.fixed = null;
   }
 
@@ -155,6 +159,8 @@ export class CameraRig {
   }
 
   setDrive(presetIndex = this.presetIndex) {
+    this.driveYaw = this.yaw;
+    this.yawRate = 0;
     this.mode = 'drive';
     this.presetIndex = presetIndex;
     this.fixed = null;
@@ -172,18 +178,25 @@ export class CameraRig {
       const p = this.preset;
       const pitchGoal = p.pitch * DEG;
       // Sit behind the car, taking the short way round.
-      const err = wrapAngle(carHeading + Math.PI - this.yaw);
       if (snap) {
-        this.yaw += err;
+        this.yaw += wrapAngle(carHeading + Math.PI - this.yaw);
+        this.driveYaw = this.yaw;
+        this.yawRate = 0;
         this.pitch = pitchGoal;
         this.viewHeight = p.view;
-        this.vYaw.v = this.vPitch.v = this.vView.v = 0;
+        this.vPitch.v = this.vView.v = 0;
       } else {
-        // Rotational damping: follow lazily, tightening only if the tail starts to get away.
-        // Right after a mode change the swing back behind the car is deliberately unhurried.
-        this.settle = Math.max(0, this.settle - dt);
-        const time = this.settle > 0 ? Math.max(p.yawTime, 0.7) : p.yawTime / (1 + Math.max(0, Math.abs(err) - YAW_SLACK) * 2.5);
-        this.yaw = smoothDamp(this.yaw, this.yaw + err, this.vYaw, time, dt);
+        const headingYaw = carHeading + Math.PI;
+        const error = wrapAngle(headingYaw - this.driveYaw);
+        if (Math.abs(error) > YAW_DEAD_ZONE) this.driveYaw = headingYaw - Math.sign(error) * YAW_DEAD_ZONE;
+        const yawError = wrapAngle(this.driveYaw - this.yaw);
+        // Critically damped angular follow with explicit acceleration and rate ceilings.
+        // Damping uses current angular velocity, so the camera sheds speed before the target
+        // instead of snapping or swinging past it.
+        const omega = 2 / p.yawTime;
+        const acceleration = THREE.MathUtils.clamp(omega * omega * yawError - 3.2 * omega * this.yawRate, -YAW_MAX_ACCEL, YAW_MAX_ACCEL);
+        this.yawRate = THREE.MathUtils.clamp(this.yawRate + acceleration * dt, -YAW_MAX_RATE, YAW_MAX_RATE);
+        this.yaw += this.yawRate * dt;
         this.pitch = smoothDamp(this.pitch, pitchGoal, this.vPitch, MOVE_TIME, dt);
         this.viewHeight = Math.exp(smoothDamp(Math.log(this.viewHeight), Math.log(p.view), this.vView, MOVE_TIME, dt)); // zoom in log space
       }
@@ -197,8 +210,12 @@ export class CameraRig {
     }
     if (snap) { this.lead = leadGoal; this.vLead.v = 0; }
     else this.lead = smoothDamp(this.lead, leadGoal, this.vLead, MOVE_TIME, dt);
-    // Follow the car's position (both modes) with a little give, so it settles back at speed.
-    this.focus.lerp(carPos, ease(8, dt, snap));
+    // Follow horizontal position immediately. World-space follow lag translates scenery
+    // beneath the player even in Free mode; only smooth vertical grade changes.
+    if (snap) this.focus.copy(carPos);
+    else this.focus.y += (carPos.y - this.focus.y) * ease(10, dt, false);
+    this.focus.x = carPos.x;
+    this.focus.z = carPos.z;
     const panGoal = this.mode === 'free' ? this.pan : ZERO2;
     if (snap) this.panNow.copy(panGoal);
     else if (this.mode === 'free') this.panNow.lerp(panGoal, ease(12, dt, false)); // direct, responsive panning
@@ -206,8 +223,7 @@ export class CameraRig {
 
     if (this.fixed) this.target.lerp(this.fixed, ease(8, dt, snap));
     else {
-      // "ahead" is along the camera's own ground-forward, so the car stays centred left-to-right
-      // even while the yaw is still catching up with a turn.
+      // Keep camera framing offsets independent of the car absolute follow position.
       this.target.set(
         this.focus.x - Math.sin(this.yaw) * this.lead + this.panNow.x,
         this.focus.y,
