@@ -1,0 +1,381 @@
+import * as THREE from 'three';
+import { Rng } from '../core/rng';
+import { fbm2, noise2, smoothstep } from '../core/noise';
+import { HeightField } from './heightfield';
+import { ROAD_HALF_WIDTH, Track } from './track';
+import { edgeDistance } from './terrain';
+import { PaintShared, paintMaterial } from '../render/paint';
+import { FOLIAGE, PropBuilder, makeBirch, makeBroadleaf, makeBush, makeConifer, makeFlower, makeRock, makeTuft } from './flora';
+
+const CHUNK = 100; // metres — instances are batched per chunk so off-screen groups are culled
+const HW = ROAD_HALF_WIDTH;
+
+interface Batch { geo: THREE.BufferGeometry; mats: THREE.Matrix4[]; cols: THREE.Color[] }
+
+class Batcher {
+  private map = new Map<string, Batch>();
+  add(id: string, geo: THREE.BufferGeometry, m: THREE.Matrix4, c: THREE.Color) {
+    const cx = Math.floor(m.elements[12] / CHUNK), cz = Math.floor(m.elements[14] / CHUNK);
+    const key = `${id}|${cx}|${cz}`;
+    let b = this.map.get(key);
+    if (!b) this.map.set(key, (b = { geo, mats: [], cols: [] }));
+    b.mats.push(m.clone());
+    b.cols.push(c.clone());
+  }
+  flush(material: THREE.Material, cast: boolean, receive: boolean, parent: THREE.Object3D): number {
+    let total = 0;
+    for (const b of this.map.values()) {
+      const mesh = new THREE.InstancedMesh(b.geo, material, b.mats.length);
+      b.mats.forEach((m, i) => { mesh.setMatrixAt(i, m); mesh.setColorAt(i, b.cols[i]); });
+      mesh.instanceMatrix.needsUpdate = true;
+      mesh.instanceColor!.needsUpdate = true;
+      mesh.castShadow = cast;
+      mesh.receiveShadow = receive;
+      mesh.computeBoundingSphere();
+      mesh.computeBoundingBox();
+      parent.add(mesh);
+      total += b.mats.length;
+    }
+    this.map.clear();
+    return total;
+  }
+}
+
+export interface ScatterStats { trees: number; bushes: number; rocks: number; tufts: number; flowers: number }
+
+export function buildScatter(track: Track, hf: HeightField, shared: PaintShared, lowSpec: boolean): { group: THREE.Group; stats: ScatterStats } {
+  const group = new THREE.Group();
+  group.name = 'scatter';
+  const rng = new Rng(7331);
+
+  // ---------- materials ----------
+  const swayVertex = /* glsl */ `
+    {
+      #ifdef USE_INSTANCING
+        vec3 ip = instanceMatrix[3].xyz;
+      #else
+        vec3 ip = vec3(0.0);
+      #endif
+      float ph = ip.x * 0.31 + ip.z * 0.27;
+      float gust = sin(uTime * 1.25 + ph) * 0.6 + sin(uTime * 2.7 + ph * 1.7 + position.y * 0.7) * 0.4;
+      float flutter = sin(uTime * 4.1 + position.x * 5.3 + position.z * 4.7 + ph);
+      transformed.xz += aSway * (gust * 0.045 + flutter * 0.012) * vec2(0.8, 0.6);
+      transformed.y += aSway * flutter * 0.008;
+    }
+  `;
+  const foliageMat = paintMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), shared, {
+    key: 'foliage',
+    vertexPars: 'attribute float aSway;',
+    vertexMain: swayVertex,
+    volumeNormals: true,
+    fragColor: /* glsl */ `
+      {
+        // the same paper tooth as the ground, so foliage belongs to the same painting
+        float n = texture2D(uNoise, vWorldPos.xz / 6.3 + vWorldPos.y * 0.13).b;
+        diffuseColor.rgb *= 1.0 + (n - 0.5) * 0.14;
+      }
+    `,
+  });
+  const groundCoverMat = paintMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), shared, {
+    key: 'cover',
+    vertexPars: 'attribute float aSway;',
+    vertexMain: swayVertex,
+    volumeNormals: true,
+  });
+  const rockMat = paintMaterial(new THREE.MeshLambertMaterial({ vertexColors: true }), shared, {
+    key: 'rock',
+    fragColor: /* glsl */ `
+      {
+        float n = texture2D(uNoise, vWorldPos.xz / 3.1 + vWorldPos.y * 0.21).b;
+        float s = texture2D(uNoise, vWorldPos.xz / vec2(9.0, 2.2) + vWorldPos.y * 0.4).a;
+        diffuseColor.rgb *= 1.0 + (n - 0.5) * 0.16 + (s - 0.5) * 0.10;
+      }
+    `,
+  });
+  const propMat = paintMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), shared, { key: 'prop' });
+
+  // ---------- model library ----------
+  const lib = {
+    oak: [makeBroadleaf(11, FOLIAGE.oak), makeBroadleaf(12, FOLIAGE.oak)],
+    lime: [makeBroadleaf(21, FOLIAGE.lime), makeBroadleaf(22, FOLIAGE.lime)],
+    plum: [makeBroadleaf(31, FOLIAGE.plum)],
+    fir: [makeConifer(41, FOLIAGE.fir), makeConifer(42, FOLIAGE.fir)],
+    birch: [makeBirch(51, FOLIAGE.birch), makeBirch(52, FOLIAGE.birch)],
+    bush: [makeBush(61, FOLIAGE.bush), makeBush(62, FOLIAGE.bush)],
+    bloom: [makeBush(71, FOLIAGE.bloom)],
+    rock: [makeRock(81), makeRock(82), makeRock(83)],
+  };
+  type Species = keyof typeof lib;
+
+  const trees = new Batcher(), rocks = new Batcher(), cover = new Batcher();
+  const placed: { x: number; z: number; r: number }[] = [];
+  const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
+  const tint = new THREE.Color();
+  const stats: ScatterStats = { trees: 0, bushes: 0, rocks: 0, tufts: 0, flowers: 0 };
+
+  const free = (x: number, z: number, r: number) => {
+    for (const o of placed) if ((o.x - x) ** 2 + (o.z - z) ** 2 < (o.r + r) ** 2) return false;
+    return true;
+  };
+  const ok = (x: number, z: number, roadGap: number, edge = -13) => hf.roadDist(x, z) > HW + roadGap && edgeDistance(x, z) < edge;
+
+  const put = (batch: Batcher, sp: Species, x: number, z: number, scale: number, lean = 0.04, sink = 0, jitter = 0.07) => {
+    const geos = lib[sp];
+    const vi = Math.floor(rng.next() * geos.length);
+    e.set(rng.range(-lean, lean), rng.range(0, Math.PI * 2), rng.range(-lean, lean));
+    q.setFromEuler(e);
+    s.set(scale * rng.range(0.94, 1.06), scale * rng.range(0.92, 1.1), scale * rng.range(0.94, 1.06));
+    p.set(x, hf.height(x, z) - sink, z);
+    m.compose(p, q, s);
+    const v = 1 + rng.gauss() * jitter;
+    tint.setRGB(v * (1 + rng.gauss() * 0.03), v, v * (1 + rng.gauss() * 0.04));
+    batch.add(`${sp}${vi}`, geos[vi], m, tint);
+  };
+
+  const tree = (sp: Species, x: number, z: number, scale: number, radius = 3.2, roadGap = 7.5): boolean => {
+    if (!ok(x, z, roadGap) || !free(x, z, radius * scale * 0.72)) return false;
+    put(trees, sp, x, z, scale);
+    placed.push({ x, z, r: radius * scale * 0.72 });
+    stats.trees++;
+    return true;
+  };
+  const bush = (x: number, z: number, scale: number, bloom = false) => {
+    if (!ok(x, z, 2.4) || !free(x, z, 0.5)) return;
+    put(trees, bloom ? 'bloom' : 'bush', x, z, scale, 0.06, 0.05);
+    stats.bushes++;
+  };
+  const rock = (x: number, z: number, scale: number) => {
+    if (!ok(x, z, 1.9) || !free(x, z, 0.6)) return;
+    put(rocks, 'rock', x, z, scale, 0.12, 0.08 * scale, 0.05);
+    placed.push({ x, z, r: 0.8 * scale });
+    stats.rocks++;
+  };
+
+  // ---------- 1. composed elements ----------
+  // Birch allée flanking the long southern sweep — the "postcard" stretch.
+  const nearestS = (x: number, z: number) => {
+    let best = 0, bd = Infinity;
+    for (const t of track.samples) { const d = (t.x - x) ** 2 + (t.z - z) ** 2; if (d < bd) { bd = d; best = t.s; } }
+    return best;
+  };
+  const along = (s0: number, s1: number, step: number, fn: (t: ReturnType<Track['at']>, i: number) => void) => {
+    let i = 0;
+    for (let d = s0; d < s1; d += step) fn(track.at(d), i++);
+  };
+  const sA = nearestS(-70, 112), sB = nearestS(48, 104);
+  along(sA, sB, 9.5, (t, i) => {
+    for (const side of [-1, 1]) {
+      if ((i + (side > 0 ? 1 : 0)) % 7 === 3) continue; // leave the odd gap
+      const off = side * (HW + 6.2 + rng.range(-0.5, 0.8)), j = rng.range(-1.2, 1.2);
+      tree('birch', t.x - t.tz * off + t.tx * j, t.z + t.tx * off + t.tz * j, rng.range(0.85, 1.12), 1.9, 4.6);
+    }
+  });
+
+  // Authored groves: [x, z, radius, count, species mix]
+  const groves: [number, number, number, number, Species[]][] = [
+    [34, 44, 34, 20, ['oak', 'oak', 'lime', 'plum']], // on the landmark hill
+    [84, -128, 20, 12, ['fir', 'fir', 'oak']], // inside the northern hairpin
+    [96, -48, 22, 11, ['oak', 'lime', 'fir']], // between the esses
+    [-100, -104, 26, 15, ['fir', 'fir', 'fir', 'oak']], // north-west fir stand
+    [-20, 6, 30, 16, ['oak', 'lime', 'oak', 'plum']], // central wood
+    [-96, 54, 22, 11, ['lime', 'oak', 'birch']], // western dip
+    [8, 150, 26, 12, ['oak', 'fir', 'lime']], // southern backdrop
+    [-10, -122, 20, 10, ['lime', 'birch', 'oak']],
+    [150, -72, 18, 9, ['fir', 'oak']],
+    [118, 44, 16, 8, ['oak', 'plum', 'lime']],
+  ];
+  for (const [gx, gz, gr, count, mix] of groves) {
+    let done = 0, tries = 0;
+    while (done < count && tries++ < count * 30) {
+      const a = rng.range(0, Math.PI * 2), d = gr * Math.sqrt(rng.next());
+      const sp = rng.pick(mix);
+      const sc = sp === 'fir' ? rng.range(0.8, 1.25) : sp === 'birch' ? rng.range(0.85, 1.1) : rng.range(0.82, 1.3);
+      if (tree(sp, gx + Math.cos(a) * d, gz + Math.sin(a) * d * 0.8, sc, sp === 'fir' ? 2.3 : sp === 'birch' ? 1.9 : 3.2)) done++;
+    }
+  }
+
+  // ---------- 2. noise-driven background planting ----------
+  for (let z = -170; z <= 170; z += 10) for (let x = -170; x <= 170; x += 10) {
+    const px = x + rng.range(-4.5, 4.5), pz = z + rng.range(-4.5, 4.5);
+    const dens = smoothstep(0.08, 0.42, fbm2(px / 95 + 5.5, pz / 95 - 2.5, 3, 301));
+    if (rng.next() > dens * 0.8) continue;
+    const cool = noise2(px / 120 - 3.3, pz / 120 + 7.7, 77);
+    const roll = rng.next();
+    const sp: Species = cool > 0.18 ? (roll < 0.75 ? 'fir' : 'oak') : roll < 0.5 ? 'oak' : roll < 0.84 ? 'lime' : roll < 0.93 ? 'birch' : 'plum';
+    tree(sp, px, pz, rng.range(0.8, 1.25), sp === 'fir' ? 2.3 : sp === 'birch' ? 1.9 : 3.2);
+  }
+
+  // Lone specimen trees close to the road for foreground interest.
+  along(0, track.length, 30, (t) => {
+    if (rng.next() < 0.3) return;
+    const side = rng.next() < 0.5 ? -1 : 1, off = side * (HW + rng.range(9, 17));
+    tree(rng.pick<Species>(['oak', 'lime', 'oak', 'birch']), t.x - t.tz * off, t.z + t.tx * off, rng.range(0.9, 1.2));
+  });
+
+  // ---------- 3. understorey: bushes hug tree bases and the verge ----------
+  const treeCount = placed.length;
+  for (let i = 0; i < treeCount; i++) {
+    const o = placed[i];
+    const k = rng.next() < 0.5 ? rng.int(1, 3) : 0;
+    for (let j = 0; j < k; j++) {
+      const a = rng.range(0, 6.28), d = o.r + rng.range(0.6, 2.4);
+      bush(o.x + Math.cos(a) * d, o.z + Math.sin(a) * d, rng.range(0.7, 1.25), rng.next() < 0.22);
+    }
+  }
+  along(0, track.length, 11, (t) => {
+    if (rng.next() < 0.42) return;
+    const side = rng.next() < 0.5 ? -1 : 1, off = side * (HW + rng.range(3.0, 6.5));
+    const x = t.x - t.tz * off, z = t.z + t.tx * off;
+    bush(x, z, rng.range(0.7, 1.2), rng.next() < 0.3);
+    if (rng.next() < 0.4) bush(x + rng.range(-1.6, 1.6), z + rng.range(-1.6, 1.6), rng.range(0.55, 0.9));
+  });
+
+  // ---------- 4. rocks: outcrops on crests, plus a few beside the road ----------
+  for (let i = 0; i < 46; i++) {
+    const x = rng.range(-165, 165), z = rng.range(-165, 165);
+    const crest = hf.height(x, z) - (hf.height(x + 9, z) + hf.height(x - 9, z) + hf.height(x, z + 9) + hf.height(x, z - 9)) / 4;
+    if (crest < 0.12 && rng.next() < 0.75) continue;
+    const k = rng.int(2, 5);
+    for (let j = 0; j < k; j++) rock(x + rng.gauss() * 3.2, z + rng.gauss() * 3.2, j === 0 ? rng.range(1.2, 2.1) : rng.range(0.5, 1.2));
+  }
+  along(0, track.length, 24, (t) => {
+    if (rng.next() < 0.5) return;
+    const side = rng.next() < 0.5 ? -1 : 1, off = side * (HW + rng.range(2.6, 5));
+    const x = t.x - t.tz * off, z = t.z + t.tx * off;
+    rock(x, z, rng.range(0.6, 1.3));
+    if (rng.next() < 0.6) rock(x + rng.range(-1.5, 1.5), z + rng.range(-1.5, 1.5), rng.range(0.4, 0.7));
+  });
+
+  // ---------- 5. ground cover: grass tufts in drifts, wildflowers in patches ----------
+  const tufts = [makeTuft(1), makeTuft(2), makeTuft(3)];
+  const tuftDeep = new THREE.Color('#4a8a48'), tuftMid = new THREE.Color('#6fa548'), tuftLight = new THREE.Color('#b5cf62'), tuftDry = new THREE.Color('#b9c468');
+  const tuftStep = lowSpec ? 2.4 : 1.6;
+  for (let z = -172; z <= 172; z += tuftStep) for (let x = -172; x <= 172; x += tuftStep) {
+    const px = x + rng.range(-1, 1) * tuftStep * 0.6, pz = z + rng.range(-1, 1) * tuftStep * 0.6;
+    const drift = fbm2(px / 34 + 1.7, pz / 34 - 9.1, 3, 555);
+    const fine = noise2(px / 7.5, pz / 7.5, 91);
+    if (drift + fine * 0.3 < 0.02 + rng.next() * 0.16) continue; // tufts gather in drifts, leaving calm open paint
+    const d = hf.roadDist(px, pz);
+    if (d < HW + 1.25 || edgeDistance(px, pz) > -12) continue;
+    const tone = noise2(px / 58 + 4, pz / 58 - 6, 123) + rng.gauss() * 0.3;
+    tint.copy(tone > 0.25 ? tuftLight : tone < -0.25 ? tuftDeep : tuftMid);
+    if (d < HW + 4 && rng.next() < 0.4) tint.copy(tuftDry);
+    tint.multiplyScalar(rng.range(0.9, 1.08));
+    e.set(0, rng.range(0, 6.28), 0);
+    q.setFromEuler(e);
+    const sc = rng.range(0.75, 1.5) * (d < HW + 4 ? 0.8 : 1);
+    s.set(sc, sc * rng.range(0.8, 1.3), sc);
+    p.set(px, hf.height(px, pz) - 0.02, pz);
+    m.compose(p, q, s);
+    const vi = Math.floor(rng.next() * tufts.length);
+    cover.add(`tuft${vi}`, tufts[vi], m, tint);
+    stats.tufts++;
+  }
+
+  const flower = makeFlower();
+  const flowerCols = ['#fbf5e4', '#f4d25a', '#d3b5ee', '#f3a58f'].map((h) => new THREE.Color(h));
+  const patches = lowSpec ? 200 : 360;
+  for (let i = 0; i < patches; i++) {
+    const cx = rng.range(-168, 168), cz = rng.range(-168, 168);
+    if (fbm2(cx / 70 - 2.2, cz / 70 + 6.1, 2, 808) < -0.05) continue;
+    const main = rng.pick(flowerCols), rad = rng.range(1.8, 6), count = rng.int(10, 42);
+    for (let j = 0; j < count; j++) {
+      const px = cx + rng.gauss() * rad, pz = cz + rng.gauss() * rad;
+      if (hf.roadDist(px, pz) < HW + 1.5 || edgeDistance(px, pz) > -12) continue;
+      tint.copy(rng.next() < 0.82 ? main : rng.pick(flowerCols)).multiplyScalar(rng.range(0.92, 1.0));
+      const sc = rng.range(0.09, 0.17);
+      e.set(rng.range(-0.3, 0.3), rng.range(0, 6.28), rng.range(-0.3, 0.3));
+      q.setFromEuler(e);
+      s.set(sc, sc, sc);
+      p.set(px, hf.height(px, pz) + rng.range(0.16, 0.4), pz);
+      m.compose(p, q, s);
+      cover.add('flower', flower, m, tint);
+      stats.flowers++;
+    }
+  }
+
+  // Foliage casts shadows but is lit purely by its volume normals: letting leaf cards shadow
+  // each other breaks the crown into noisy confetti instead of one soft painted form.
+  trees.flush(foliageMat, true, false, group);
+  rocks.flush(rockMat, true, true, group);
+  cover.flush(groundCoverMat, false, true, group);
+
+  // ---------- 6. roadside furniture (one merged static mesh) ----------
+  const props = new PropBuilder();
+  const white = new THREE.Color('#f2ede1'), offWhite = new THREE.Color('#d9d3c6'), black = new THREE.Color('#2c2b30'), red = new THREE.Color('#d94a32');
+  const wood = new THREE.Color('#9c7453'), woodLight = new THREE.Color('#c39d72'), woodDark = new THREE.Color('#77563f');
+  const basis = new THREE.Matrix4(), local = new THREE.Matrix4();
+  const frame = (x: number, z: number, fx: number, fz: number, y?: number) => {
+    // local +Z points along (fx, fz); +Y up
+    const yy = y ?? hf.height(x, z);
+    return basis.makeBasis(new THREE.Vector3(fz, 0, -fx), new THREE.Vector3(0, 1, 0), new THREE.Vector3(fx, 0, fz)).setPosition(x, yy, z);
+  };
+  const part = (sx: number, sy: number, sz: number, ox: number, oy: number, oz: number, c: THREE.Color, top?: THREE.Color, rotZ = 0) => {
+    local.makeRotationZ(rotZ).setPosition(ox, oy, oz).premultiply(basis);
+    props.box(sx, sy, sz, local, c, top);
+  };
+
+  // Tight corners get chevron boards on the outside; everything else gets delineator posts.
+  const tight = (t: { k: number }) => Math.abs(t.k) > 1 / 24;
+  along(0, track.length, 7, (t) => {
+    if (!tight(t)) return;
+    const out = -Math.sign(t.k), off = out * (HW + 2.3);
+    const x = t.x - t.tz * off, z = t.z + t.tx * off;
+    frame(x, z, t.tz * out, -t.tx * out); // board faces the road
+    part(0.07, 1.0, 0.07, -0.55, 0.5, 0, black);
+    part(0.07, 1.0, 0.07, 0.55, 0.5, 0, black);
+    part(1.5, 0.52, 0.05, 0, 0.98, 0, red);
+    const dirSign = Math.sign(t.k) * out; // chevrons point the way the corner goes
+    for (const cx of [-0.42, 0.08, 0.58]) {
+      part(0.3, 0.085, 0.07, cx - 0.1 * dirSign, 1.08, 0, white, undefined, -0.8 * dirSign);
+      part(0.3, 0.085, 0.07, cx - 0.1 * dirSign, 0.88, 0, white, undefined, 0.8 * dirSign);
+    }
+  });
+  along(0, track.length, 17, (t) => {
+    if (tight(t)) return;
+    for (const side of [-1, 1]) {
+      const off = side * (HW + 1.25);
+      const x = t.x - t.tz * off, z = t.z + t.tx * off;
+      frame(x, z, t.tx, t.tz, hf.surface(x, z));
+      part(0.12, 0.62, 0.07, 0, 0.31, 0, offWhite, white);
+      part(0.125, 0.16, 0.075, 0, 0.7, 0, black);
+      part(0.12, 0.06, 0.07, 0, 0.81, 0, white);
+      part(0.06, 0.09, 0.08, 0, 0.7, 0, side > 0 ? red : white);
+    }
+  });
+
+  // Weathered post-and-rail fence along two stretches.
+  const fence = (s0: number, s1: number, side: number) => {
+    const step = 2.5, pts: THREE.Vector3[] = [];
+    for (let d = s0; d <= s1; d += step) {
+      const t = track.at(d), off = side * (HW + 3.3);
+      const x = t.x - t.tz * off, z = t.z + t.tx * off;
+      pts.push(new THREE.Vector3(x, hf.height(x, z), z));
+    }
+    pts.forEach((a, i) => {
+      const b = pts[Math.min(i + 1, pts.length - 1)], prev = pts[Math.max(i - 1, 0)];
+      const dir = new THREE.Vector3().subVectors(b, prev).setY(0).normalize();
+      frame(a.x, a.z, dir.x, dir.z, a.y);
+      const lean = rng.range(-0.05, 0.05);
+      part(0.14, 1.05 + rng.range(-0.06, 0.08), 0.14, 0, 0.46, 0, woodDark, wood, lean);
+      if (i === pts.length - 1) return;
+      if (rng.next() < 0.06) return; // a missing rail here and there
+      const seg = new THREE.Vector3().subVectors(b, a), len = seg.length();
+      const yaw = Math.atan2(seg.x, seg.z), pitch = -Math.atan2(seg.y, Math.hypot(seg.x, seg.z));
+      for (const [h, c] of [[0.42, wood], [0.8, woodLight]] as [number, THREE.Color][]) {
+        local.makeRotationFromEuler(new THREE.Euler(pitch + rng.range(-0.012, 0.012), yaw, 0, 'YXZ')).setPosition((a.x + b.x) / 2, (a.y + b.y) / 2 + h, (a.z + b.z) / 2);
+        props.box(0.06, 0.11, len + 0.12, local, c, woodLight);
+      }
+    });
+  };
+  fence(nearestS(128, 98), nearestS(150, 10), 1);
+  fence(nearestS(-70, 112) - 6, nearestS(-70, 112) + 70, -1);
+
+  const propMesh = new THREE.Mesh(props.build(), propMat);
+  propMesh.castShadow = true;
+  propMesh.receiveShadow = true;
+  propMesh.name = 'props';
+  group.add(propMesh);
+
+  return { group, stats };
+}

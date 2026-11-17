@@ -1,0 +1,147 @@
+import * as THREE from 'three';
+import { HeightField, WORLD_HALF } from './heightfield';
+import { ROAD_HALF_WIDTH } from './track';
+import { PAL, PaintShared, paintMaterial } from '../render/paint';
+
+const SEGMENTS = 320; // 1.25 m cells — plenty for gentle hills, light enough for mobile
+
+/** Distance (m) inside which the diorama starts dissolving into paper. Negative = safely inside. */
+export function edgeDistance(x: number, z: number): number {
+  const qx = Math.abs(x) - (WORLD_HALF - 34), qz = Math.abs(z) - (WORLD_HALF - 34);
+  return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0);
+}
+
+export function buildTerrain(hf: HeightField, shared: PaintShared): THREE.Mesh {
+  const n = SEGMENTS + 1;
+  const step = (WORLD_HALF * 2) / SEGMENTS;
+  const h = new Float32Array(n * n);
+  for (let iz = 0; iz < n; iz++) for (let ix = 0; ix < n; ix++) {
+    h[iz * n + ix] = hf.height(ix * step - WORLD_HALF, iz * step - WORLD_HALF);
+  }
+  const at = (ix: number, iz: number) => h[Math.min(n - 1, Math.max(0, iz)) * n + Math.min(n - 1, Math.max(0, ix))];
+
+  const pos = new Float32Array(n * n * 3);
+  const nor = new Float32Array(n * n * 3);
+  const form = new Float32Array(n * n); // +crest / -hollow, used as painted form shading
+  const K = 7; // curvature probe radius in cells (~9 m)
+  const v = new THREE.Vector3();
+  for (let iz = 0; iz < n; iz++) for (let ix = 0; ix < n; ix++) {
+    const i = iz * n + ix;
+    pos[i * 3] = ix * step - WORLD_HALF;
+    pos[i * 3 + 1] = h[i];
+    pos[i * 3 + 2] = iz * step - WORLD_HALF;
+    v.set(at(ix - 1, iz) - at(ix + 1, iz), 2 * step, at(ix, iz - 1) - at(ix, iz + 1)).normalize();
+    nor[i * 3] = v.x; nor[i * 3 + 1] = v.y; nor[i * 3 + 2] = v.z;
+    const ring = (at(ix - K, iz) + at(ix + K, iz) + at(ix, iz - K) + at(ix, iz + K)
+      + at(ix - K, iz - K) + at(ix + K, iz + K) + at(ix - K, iz + K) + at(ix + K, iz - K)) / 8;
+    form[i] = Math.max(-1, Math.min(1, (h[i] - ring) / 0.55));
+  }
+  const idx = new Uint32Array(SEGMENTS * SEGMENTS * 6);
+  let k = 0;
+  for (let iz = 0; iz < SEGMENTS; iz++) for (let ix = 0; ix < SEGMENTS; ix++) {
+    const a = iz * n + ix, b = a + 1, c = a + n, d = c + 1;
+    idx[k++] = a; idx[k++] = c; idx[k++] = b;
+    idx[k++] = b; idx[k++] = c; idx[k++] = d;
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  geo.setAttribute('aForm', new THREE.BufferAttribute(form, 1));
+  geo.setIndex(new THREE.BufferAttribute(idx, 1));
+  geo.computeBoundingSphere();
+
+  const C = (hex: string) => ({ value: new THREE.Color(hex) });
+  const mat = paintMaterial(new THREE.MeshLambertMaterial({ color: 0xffffff }), shared, {
+    key: 'terrain',
+    uniforms: {
+      uSdf: { value: hf.sdfTexture },
+      uHalfRoad: { value: ROAD_HALF_WIDTH },
+      cLight: C(PAL.grassLight), cMid: C(PAL.grassMid), cDeep: C(PAL.grassDeep),
+      cCool: C(PAL.grassCool), cDry: C(PAL.grassDry),
+    },
+    vertexPars: /* glsl */ `attribute float aForm;\nvarying float vForm;`,
+    vertexMain: /* glsl */ `vForm = aForm;`,
+    fragPars: /* glsl */ `
+      uniform sampler2D uSdf;
+      uniform float uHalfRoad;
+      uniform vec3 cLight, cMid, cDeep, cCool, cDry;
+      varying float vForm;
+      float gEdge;
+    `,
+    fragColor: /* glsl */ `
+      {
+        vec2 p = vWorldPos.xz;
+
+        // --- Layer 1: broad gouache washes. Few tones, large calm shapes; brush dabs (not
+        //     wiggly noise) nibble at the outlines so edges feel laid down by hand.
+        //     Six texture reads feed every layer below (channels are reused deliberately —
+        //     this shader covers the whole screen, so reads are the budget that matters).
+        vec4 w0 = texture2D(uNoise, p / 240.0 + 0.13);
+        vec2 pw = p + (w0.rg - 0.5) * 24.0;
+        vec4 nA = texture2D(uNoise, pw / 330.0 + vec2(0.37, 0.71));
+        vec4 nB = texture2D(uNoise, p / 83.0 + vec2(0.91, 0.23));
+        vec4 nC = texture2D(uNoise, rot2(p, 0.5) / 9.7);
+        vec4 s1 = texture2D(uStrokes, p / 29.0);
+        vec4 s2 = texture2D(uStrokes, rot2(p, 1.1) / 43.0 + 0.37);
+        float dab = s2.b, dab2 = s1.b;
+        float brushEdge = (dab - 0.3) * 0.075 + (dab2 - 0.3) * 0.04;
+
+        float lightP = smoothstep(0.565, 0.615, nA.r + brushEdge + (nB.g - 0.5) * 0.05);
+        float deepP = smoothstep(0.595, 0.645, nA.g + brushEdge + (nB.r - 0.5) * 0.05);
+        vec3 g = mix(cMid, cLight, lightP * 0.80);
+        g = mix(g, cDeep, deepP * 0.74);
+
+        // --- Layer 2: quiet medium variation — cool drifts and long wind-swept dry bands.
+        g = mix(g, cCool, smoothstep(0.56, 0.78, nB.b) * 0.15);
+        float dryBand = smoothstep(0.60, 0.80, nA.a);
+        g = mix(g, cDry, dryBand * 0.20 * (1.0 - deepP));
+
+        // --- Layer 3: painted form. Crests catch warm light, hollows hold cool pigment.
+        g = mix(g, cLight * 1.03, clamp(vForm, 0.0, 1.0) * 0.30);
+        g = mix(g, cCool * 0.94, clamp(-vForm, 0.0, 1.0) * 0.34);
+
+        // --- Layer 4: brush work. Soft dabs, then short ticks that read as blades of grass.
+        g *= 1.0 + (dab - 0.30) * 0.10 + (dab2 - 0.30) * 0.06;
+        float tickD = max(s1.r, s2.r * 0.85) * (0.45 + 0.55 * smoothstep(0.36, 0.60, nB.r));
+        float tickL = max(s1.g, s2.g * 0.85) * (0.40 + 0.60 * smoothstep(0.40, 0.64, nB.g));
+        g = mix(g, g * vec3(0.66, 0.80, 0.74), tickD * 0.62);
+        g = mix(g, g * 1.17 + vec3(0.03, 0.04, 0.0), tickL * 0.62);
+
+        // --- Layer 5: paper tooth and dry-brush streaks (finest scale, mip-filtered).
+        g *= 1.0 + (nC.b - 0.5) * 0.085 + (nC.a - 0.5) * 0.075;
+
+        // --- Road shoulder: trodden dry grass, then bare earth meeting the asphalt.
+        float d = texture2D(uSdf, p / (2.0 * uWorldHalf) + 0.5).r;
+        if (d < uHalfRoad + 7.0) {
+          float dry = 1.0 - smoothstep(uHalfRoad + 0.6, uHalfRoad + 5.0, d + (nB.r - 0.5) * 3.0);
+          g = mix(g, cDry * (1.0 + (nC.b - 0.5) * 0.1), dry * 0.50);
+          float wide = smoothstep(0.44, 0.62, nB.g);   // the verge breathes in and out
+          float wob = clamp(nB.b * 1.6 - 0.45, 0.0, 1.0) * 0.5 + nC.g * 0.25 + s1.g * 0.2 + wide * 0.9;
+          float dirt = 1.0 - smoothstep(uHalfRoad + 0.45 + wob, uHalfRoad + 0.85 + wob, d);
+          if (dirt > 0.0) g = mix(g, dirtColor(p), dirt);
+        }
+
+        diffuseColor.rgb = g;
+
+        // --- Diorama edge: the world dissolves into paper through growing stippled holes.
+        vec2 q = abs(p) - (uWorldHalf - 34.0);
+        float e = length(max(q, 0.0)) + min(max(q.x, q.y), 0.0);
+        gEdge = smoothstep(4.0, 22.0, e + (w0.b - 0.5) * 22.0 + (nB.a - 0.5) * 9.0);
+        if (gEdge > 0.0) {
+          vec2 sp = rot2(p, 0.47) / 0.62;
+          vec2 cell = floor(sp);
+          vec2 f = fract(sp) - 0.5 + (vec2(hash21(cell), hash21(cell + 17.3)) - 0.5) * 0.5;
+          float grow = clamp(gEdge * 1.25 + (hash21(cell + 5.1) - 0.5) * 0.45, 0.0, 1.2);
+          if (length(f) < grow * 0.86) discard;
+        }
+      }
+    `,
+    fragFinal: /* glsl */ `gl_FragColor.rgb = mix(gl_FragColor.rgb, uPaper, smoothstep(0.15, 0.95, gEdge) * 0.55);`,
+  });
+
+  const mesh = new THREE.Mesh(geo, mat);
+  mesh.receiveShadow = true;
+  mesh.castShadow = false;
+  mesh.name = 'terrain';
+  return mesh;
+}
