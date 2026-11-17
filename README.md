@@ -28,22 +28,24 @@ npm run car          # regenerate public/models/car.glb with Blender (needs `ble
 | `H` | hide the legend |
 
 URL options: `?cam=free`, `?preset=0|1|2`, `?s=<metres along the road>`, `?q=low|high`,
-`?tilt=0`, `?stats=1`, `?hud=0`.
+`?tilt=0`, `?stats=1`, `?hud=0`, `?haze=<0..1>`. `?lens=ortho` restores the old parallel projection
+(used by `tools/stability.mjs`, and handy for comparing the two).
 
 ### Cameras
 
-Both modes use the same orthographic "miniature" lens.
+Both modes look through the same long "miniature" lens — a real perspective telephoto, not a
+parallel projection.
 
 - **Driving (default)** — locked behind the car; the road runs up the screen and the car sits a
-  little below centre. No orbit, tilt, zoom or pan: the rig ignores those inputs. Horizontal camera
-  follow is immediate; a 12° heading dead zone lets the car move through small corrections before
-  the camera turns, and the larger turn is rate/acceleration limited. Presets:
+  little below centre. No orbit, tilt, zoom or pan: the rig ignores those inputs. The view follows
+  the car's position exactly and turns with it through one critically damped spring: no dead zone,
+  no overshoot, and quick steering corrections are mostly filtered out. Presets:
 
-  | preset | tilt | view height | car position | yaw time constant |
-  |---|---|---|---|---|
-  | High | 58° | 66 m | 13 % below centre | 0.40 s |
-  | Normal (default) | 45° | 44 m | 17 % below centre | 0.32 s |
-  | Close | 28° | 24 m | 20 % below centre | 0.26 s |
+  | preset | tilt | lens | view height at the car | car position | yaw time constant |
+  |---|---|---|---|---|---|
+  | High | 55° | 36° | 66 m | 13 % below centre | 0.60 s |
+  | Normal (default) | 40° | 30° | 44 m | 18 % below centre | 0.52 s |
+  | Close | 22° | 30° | 24 m | 23 % below centre | 0.45 s |
 
 - **Free / photo** — orbit, tilt, zoom and pan. It follows the car's horizontal position immediately,
   smooths only height over grade changes, and does not track its heading.
@@ -53,7 +55,27 @@ Both modes use the same orthographic "miniature" lens.
 The camera only reads the car's pose. `tools/camera-test.mjs` replays a fixed input script with and
 without constant mode/preset switching and checks the vehicle ends in a bit-identical state.
 
-Camera behavior was reviewed against gameplay footage from [art of rally](https://store.steampowered.com/app/550320/art_of_rally/) and [Absolute Drift](https://store.steampowered.com/app/320140/Absolute_Drift/). Both keep the route readable and the car legible despite using different camera styles. This game retains its orthographic diorama and three driving presets, while using stable horizontal tracking, restrained world rotation and predictable road visibility as reference principles. Handling and input mapping remain unchanged.
+#### Why the lens is not orthographic
+
+The first versions used a parallel (orthographic) projection. Still frames looked fine, but in
+motion — above all while the view turned to follow the car — the ground on both sides seemed to
+tilt and curl upward, as if the road ran along the bottom of a bowl, and the scenery seemed to be
+dragged round the car. The terrain was not the cause: measured across the whole lap, the land
+beside the road is on average slightly *below* it.
+
+A parallel projection has no vanishing point and no size falloff, so a rotating view carries no
+cue for which way the ground is tilted (the same ambiguity as the "spinning dancer" illusion), and
+every point pinwheels round the car with the screen edges sweeping fastest. Through a real lens
+land recedes and shrinks with distance, the ground reads as flat, and a turn reads as the camera
+swinging round behind the car — distant land slides across like an ordinary pan.
+
+[art of rally](https://store.steampowered.com/app/550320/art_of_rally/) and
+[Absolute Drift](https://store.steampowered.com/app/320140/Absolute_Drift/) were the references:
+both look down through a perspective lens from high behind or above the car, keep the route
+readable and keep camera motion smooth. This game keeps its three driving presets and painted
+diorama look, and adds what that lens needs: aerial haze so distance reads as distance, shadows
+fitted to the lens's footprint, and a stippled dissolve for any tree crown that drifts between
+the lens and the car. Handling and input mapping are unchanged.
 
 ## How the picture is made
 
@@ -67,25 +89,27 @@ Camera behavior was reviewed against gameplay footage from [art of rally](https:
 | Roadside | Delineator posts, corner chevrons (placed from spline curvature), post-and-rail fences — one merged mesh. |
 | Car | `tools/blender/build_car.py`: a lofted hatchback shell from hand-tuned cross-sections, boolean wheel wells, arch flares, inset glazing, lamps, bumpers, spoiler, lamp pod, separate spoked wheels (~6k triangles). Colours are assigned in code by material name. |
 | Light | One warm directional sun with a texel-snapped PCF shadow map, cool hemisphere fill. Foliage is lit by its volume normals and does not receive shadow-map shadows. |
-| Lens | One post chain: half-resolution tilt-shift blur, soft highlight roll-off, mild grade and vignette. |
+| Lens | A 30–36° perspective lens with aerial haze beyond the focal plane. One post chain: half-resolution tilt-shift blur, soft highlight roll-off, mild grade and vignette. |
 
 ## Checks
 
 ```bash
 npm run shots                 # capture review screenshots into shots/ (needs dev server + Chrome)
+node tools/observe.mjs        # drive a stretch on autopilot and tile the frames into a filmstrip
 node tools/camera-test.mjs    # camera modes, presets, transitions, vehicle independence
 node tools/stability.mjs      # pan the camera a whole number of pixels and compare re-aligned frames
-npm run test:comfort          # straight, gentle, sharp, S-bend and terrain-profile checks
+npm run test:comfort          # view turning, what the lens does to distance and to turns, terrain profile
 npm run test:mobile           # touch controls and desktop input at a mobile viewport (dev server required)
-npm run test:comfort          # straight, gentle, sharp, S-bend and terrain-profile checks
 ```
+
+The browser tools read `BTB_URL` (default `http://127.0.0.1:5183/beyond-the-bend/`).
 
 ## Known limitations
 
 - Desktop Chrome checks cover synthetic touch input and mobile-sized layouts. **Not tested on real iPhone Safari**; native multi-touch capture, notch safe areas and sustained performance still need device testing.
 - Driving is a deliberately simple arcade model with no collisions; trees and props are not solid.
-- The Close driving view is still orthographic, so it is tighter and lower rather than a true
-  perspective chase camera; low angles can let roadside trees cover the car in corners.
+- In the Close view a tree crown between the lens and the car is thinned out in stipples rather
+  than hidden cleanly, and the diorama's paper edge can show at the top of the frame as a pale sky.
 - Trees are not shadowed by other trees, there is no level-of-detail for foliage, and the leaf dabs
   look blocky in extreme close-up.
 - Rocks are the weakest asset: plain faceted boulders.
