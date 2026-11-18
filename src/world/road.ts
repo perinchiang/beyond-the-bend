@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { StyleStudy } from '../render/styleStudy';
 import { ROAD_HALF_WIDTH, ROAD_SKIRT, Track } from './track';
 import { PAL, PaintShared, paintMaterial } from '../render/paint';
 
@@ -9,7 +10,7 @@ const DASH_PERIOD = 9; // metres between centre-line dashes
  * coordinates, so edge lines and dashes stay razor-clean at any zoom (Art-of-Rally
  * readability). The paint on it is world-space, matching the terrain's treatment.
  */
-export function buildRoad(track: Track, shared: PaintShared): THREE.Mesh {
+export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy): THREE.Mesh {
   const { samples, length } = track;
   const n = samples.length;
   const hw = ROAD_HALF_WIDTH;
@@ -60,7 +61,7 @@ export function buildRoad(track: Track, shared: PaintShared): THREE.Mesh {
 
   const C = (hex: string) => ({ value: new THREE.Color(hex) });
   const mat = paintMaterial(new THREE.MeshLambertMaterial({ color: 0xffffff }), shared, {
-    key: 'road',
+    key: study ? `road-${study}` : 'road',
     uniforms: {
       uHalfRoad: { value: hw },
       uDash: { value: DASH_PERIOD },
@@ -96,6 +97,12 @@ export function buildRoad(track: Track, shared: PaintShared): THREE.Mesh {
         float dust = smoothstep(uHalfRoad - 0.38 - cut * 0.74, uHalfRoad + 0.1, d + (nC.g - 0.5) * 0.5);
         a = mix(a, earth * 0.92, dust * (0.2 + cut * 0.34));
         a *= 1.0 + (nC.b - 0.5) * 0.10 + (dab - 0.3) * 0.025;
+
+        ${study === 'print' ? `
+          a = mix(vec3(0.138, 0.144, 0.19), vec3(0.153, 0.16, 0.205),
+                  smoothstep(0.65, 0.67, nA.r + 0.06 * nL.r));
+          a = mix(a, earth, dust * 0.16);
+        ` : ''}
 
         // Painted markings — anti-aliased analytically, lightly worn by the same paint noise.
         float aw = fwidth(vRoad.x) * 1.1 + 0.004;

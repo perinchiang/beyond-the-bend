@@ -136,8 +136,8 @@ export function birchTrunk() {
   return b.build();
 }
 
-export function paintedLeafMaterials(shared: PaintShared, swayVertex: string) {
-  const woodMat = paintMaterial(new THREE.MeshLambertMaterial({ vertexColors: true }), shared, {
+export function birchBarkMaterial(shared: PaintShared) {
+  return paintMaterial(new THREE.MeshLambertMaterial({ vertexColors: true }), shared, {
     key: 'birch-bark', lensFade: true,
     vertexPars: 'varying vec3 vBark;', vertexMain: 'vBark = position;',
     fragPars: 'varying vec3 vBark;',
@@ -147,11 +147,13 @@ export function paintedLeafMaterials(shared: PaintShared, swayVertex: string) {
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.14, 0.14, 0.105), 0.78 * nick);
     `,
   });
-  const leaves = paintMaterial(new THREE.MeshLambertMaterial({
+}
+
+export function birchLeafMaterial(shared: PaintShared, swayVertex: string) {
+  return paintMaterial(new THREE.MeshLambertMaterial({
     map: leafBrushes(), vertexColors: true, side: THREE.DoubleSide, alphaTest: 0.42, alphaToCoverage: true,
   }), shared, { key: 'leaf-brushes', volumeNormals: true, lensFade: true,
     vertexPars: 'attribute float aSway;', vertexMain: swayVertex });
-  return { bark: woodMat, leaves };
 }
 
 // Bedded outcrops: one long exposed ledge, one broken shoulder and a partly

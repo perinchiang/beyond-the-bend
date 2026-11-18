@@ -6,12 +6,14 @@ import { buildTerrain } from './world/terrain';
 import { buildRoad } from './world/road';
 import { buildScatter } from './world/scatter';
 import { PAL, createPaintShared, stabiliseShadowFilter } from './render/paint';
+import { readStyleStudy } from './render/styleStudy';
 import { PostFX } from './render/post';
 import { CameraRig, DRIVE_PRESETS, DEFAULT_PRESET } from './camera';
 import { Car } from './vehicle/car';
 import { TouchControls } from './input/touch';
 
 const params = new URLSearchParams(location.search);
+const study = readStyleStudy(params.get('study'));
 const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d);
 const mobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
 const lowSpec = params.get('q') === 'low' || (params.get('q') !== 'high' && mobile);
@@ -29,6 +31,12 @@ stabiliseShadowFilter();
 const scene = new THREE.Scene();
 const shared = createPaintShared(renderer, WORLD_HALF, lowSpec);
 
+shared.uDirtWash.value = study === 'print' ? 0.86 : study === 'oil' ? 0.40 : 0;
+if (study === 'print') {
+  shared.uDirt.value.set('#d6b781');
+  shared.uDirtDark.value.set('#ccb082');
+}
+
 // ---- light: one warm low sun, cool sky fill, a little green bounce ----
 const SUN_DIR = new THREE.Vector3(0.50, 0.49, -0.75).normalize(); // direction towards the sun
 const sun = new THREE.DirectionalLight(new THREE.Color(PAL.sun), Math.PI * 1.12);
@@ -45,9 +53,9 @@ scene.add(hemi);
 // ---- world ----
 const track = buildTrack();
 const hf = buildHeightField(track);
-const scatter = buildScatter(track, hf, shared, lowSpec);
-scene.add(buildTerrain(hf, shared, scatter.patches));
-scene.add(buildRoad(track, shared));
+const scatter = buildScatter(track, hf, shared, lowSpec, study);
+scene.add(buildTerrain(hf, shared, scatter.patches, study));
+scene.add(buildRoad(track, shared, study));
 scene.add(scatter.group);
 
 const car = new Car(hf, shared);
@@ -60,7 +68,7 @@ renderer.info.autoReset = false;
 post.setTilt(num('tilt', lowSpec ? 0 : 1));
 
 // ---- start pose ----
-const startS = num('s', 232);
+const startS = num('s', study ? 470 : 232);
 function placeAt(s: number) {
   const t = track.at(s);
   car.place(t.x - t.tz * -1.65, t.z + t.tx * -1.65, Math.atan2(t.tx, t.tz));
@@ -72,7 +80,7 @@ function initCamera() {
   if (params.get('cam') === 'free' || params.has('x')) {
     const fixed = params.has('x') && params.has('z') ? new THREE.Vector3(num('x', 0), hf.height(num('x', 0), num('z', 0)), num('z', 0)) : undefined;
     rig.setFree(num('yaw', 38), num('pitch', 47), num('zoom', 46), fixed);
-  } else rig.setDrive(THREE.MathUtils.clamp(Math.round(num('preset', DEFAULT_PRESET)), 0, DRIVE_PRESETS.length - 1));
+  } else rig.setDrive(THREE.MathUtils.clamp(Math.round(num('preset', study ? 2 : DEFAULT_PRESET)), 0, DRIVE_PRESETS.length - 1));
   rig.update(0, car.position, car.heading, true);
   lens.focus = rig.mode === 'drive' ? 0.57 : 0.47;
   lens.inner = rig.mode === 'drive' ? 0.27 : 0.17;

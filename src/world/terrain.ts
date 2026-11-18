@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import type { StyleStudy } from '../render/styleStudy';
 import { HeightField, WORLD_HALF } from './heightfield';
 import { ROAD_HALF_WIDTH } from './track';
 import { PAL, PaintShared, paintMaterial } from '../render/paint';
@@ -16,7 +17,7 @@ export function edgeDistance(x: number, z: number): number {
 
 export interface GroundPatch { x: number; z: number; radius: number }
 
-export function buildTerrain(hf: HeightField, shared: PaintShared, patches: GroundPatch[]): THREE.Mesh {
+export function buildTerrain(hf: HeightField, shared: PaintShared, patches: GroundPatch[], study?: StyleStudy): THREE.Mesh {
   const n = SEGMENTS + 1;
   const step = (WORLD_HALF * 2) / SEGMENTS;
   const h = new Float32Array(n * n);
@@ -72,13 +73,16 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
 
   const C = (hex: string) => ({ value: new THREE.Color(hex) });
   const mat = paintMaterial(new THREE.MeshLambertMaterial({ color: 0xffffff }), shared, {
-    key: 'terrain',
+    key: study ? `terrain-${study}` : 'terrain',
     uniforms: {
       uStudyStone: { value: STUDY_STONE },
       uSdf: { value: hf.sdfTexture },
       uHalfRoad: { value: ROAD_HALF_WIDTH },
-      cLight: C(PAL.grassLight), cMid: C(PAL.grassMid), cDeep: C(PAL.grassDeep),
-      cCool: C(PAL.grassCool), cDry: C(PAL.grassDry),
+      cLight: C(study === 'print' ? '#c7c983' : PAL.grassLight),
+      cMid: C(study === 'print' ? '#9db789' : PAL.grassMid),
+      cDeep: C(study === 'print' ? '#729b81' : PAL.grassDeep),
+      cCool: C(study === 'print' ? '#568977' : PAL.grassCool),
+      cDry: C(study === 'print' ? '#e8bf69' : PAL.grassDry),
     },
     vertexPars: /* glsl */ `attribute float aForm, aUnderstory; varying float vUnderstory;\nvarying float vForm;`,
     vertexMain: /* glsl */ `vForm = aForm; vUnderstory = aUnderstory;`,
@@ -145,6 +149,25 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
 
         // --- Layer 5: paper tooth and dry-brush streaks (finest scale, mip-filtered).
         g *= 1.0 + (nC.b - 0.5) * 0.085 + (nC.a - 0.5) * 0.075;
+
+        ${study === 'oil' ? `
+          // A long bristle dragged along the hillside, with breaks in its paint load.
+          vec2 drag = rot2(p, -0.36) / vec2(42.0, 24.0);
+          float bristle = texture2D(uNoise, drag + 0.08 * nB.rg).a;
+          float loaded = smoothstep(0.46, 0.82, nB.g);
+          g = mix(g, mix(cDry, cLight, 0.42), 0.26 * loaded * smoothstep(0.47, 0.68, bristle));
+        ` : study === 'print' ? `
+          // Separately cut colour plates follow the field boundaries. Broad regions of
+          // unbroken ink keep the small cuts concentrated along banks and hollows.
+          float hollow = nA.g + 0.16 * nB.r - 0.10 * vForm;
+          g = mix(cMid, cDeep, 0.81 * smoothstep(0.62, 0.64, hollow));
+          g = mix(g, cLight, smoothstep(0.66, 0.68, nA.r + 0.09*vForm));
+          g = mix(g, cDry, smoothstep(0.34, 0.42, fields.x));
+          g = mix(g, cLight, fields.x * 0.38 * smoothstep(0.78, 0.86, swath));
+          g = mix(g, cCool, smoothstep(0.48, 0.56, fields.y));
+          float cuts = smoothstep(0.54, 0.66, s1.r) * smoothstep(0.53, 0.73, nB.r);
+          g = mix(g, cDry, cuts * 0.18);
+        ` : ''}
 
         float understoryWash = smoothstep(0.03, 0.94, vUnderstory);
         g = mix(g, cCool * 0.82, understoryWash * (0.38 + 0.09 * s2.b));

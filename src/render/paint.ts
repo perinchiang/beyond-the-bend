@@ -165,6 +165,7 @@ export interface PaintShared {
   uWorldHalf: THREE.IUniform<number>;
   uDirt: THREE.IUniform<THREE.Color>;
   uDirtDark: THREE.IUniform<THREE.Color>;
+  uDirtWash: THREE.IUniform<number>;
   uCloud: THREE.IUniform<number>;
   /** Aerial perspective: distance from the lens where haze starts / is complete, and its strength. */
   uHaze: THREE.IUniform<THREE.Vector3>;
@@ -192,6 +193,7 @@ export function createPaintShared(renderer: THREE.WebGLRenderer, worldHalf: numb
     uWorldHalf: { value: worldHalf },
     uDirt: { value: col(PAL.dirt) },
     uDirtDark: { value: col(PAL.dirtDark) },
+    uDirtWash: { value: 0 },
     uCloud: { value: 0.24 },
     uHaze: { value: new THREE.Vector3(1e6, 2e6, 0) },
     uHazeColor: { value: col(PAL.haze) },
@@ -210,6 +212,7 @@ uniform vec3 uPaper;
 uniform float uWorldHalf;
 uniform vec3 uDirt;
 uniform vec3 uDirtDark;
+uniform float uDirtWash;
 uniform float uCloud;
 uniform vec3 uHaze;
 uniform vec3 uHazeColor;
@@ -238,7 +241,7 @@ vec3 dirtColor(vec2 p) {
   vec4 n = texture2D(uNoise, p / 8.9 + 0.27);
   vec4 m = texture2D(uNoise, p / 41.0 + 0.63);
   vec3 c = mix(uDirt, uDirtDark, smoothstep(0.38, 0.68, n.r * 0.6 + m.g * 0.4));
-  return c * (1.0 + (n.b - 0.5) * 0.16);
+  return mix(c * (1.0 + (n.b - 0.5) * 0.16), uDirt, uDirtWash);
 }
 `;
 

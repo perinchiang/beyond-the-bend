@@ -330,14 +330,14 @@ export function paintedShrub(seed: number, flowering: boolean, lowSpec: boolean)
 
 /** Low bent strokes that share a prevailing lean. The wider belly catches light
  * just above the soil, leaving a finer tip against the ground behind it. */
-export function makeTuft(seed: number): THREE.BufferGeometry {
+export function makeTuft(seed: number, oil = false): THREE.BufferGeometry {
   const rng = new Rng(seed), b = new Builder();
   const root = new THREE.Color(0.80, 0.84, 0.78), body = new THREE.Color(1, 1, 0.93);
   const tip = new THREE.Color(1.12, 1.1, 0.96);
-  for (let i = 0; i < 6; i++) {
+  for (let i = 0; i < (oil ? 4 : 6); i++) {
     const a = rng.range(-0.85, 0.85), h = rng.range(0.13, 0.38);
-    const run = new V(Math.cos(a), 0, Math.sin(a)).multiplyScalar(h * rng.range(0.8, 1.45));
-    const side = new V(-Math.sin(a), 0, Math.cos(a)).multiplyScalar(rng.range(0.023, 0.043));
+    const run = new V(Math.cos(a), 0, Math.sin(a)).multiplyScalar(h * rng.range(0.8, 1.45) * (oil ? 1.35 : 1));
+    const side = new V(-Math.sin(a), 0, Math.cos(a)).multiplyScalar(rng.range(0.023, 0.043) * (oil ? 1.85 : 1));
     const foot = new V(rng.range(-0.27, 0.27), 0, rng.range(-0.14, 0.14));
     const joint = foot.clone().addScaledVector(run, 0.39); joint.y = h * 0.72;
     const end = foot.clone().add(run); end.y = h;
