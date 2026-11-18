@@ -38,13 +38,17 @@ export interface HeightField {
   fieldMax: number;
 }
 
-export function buildHeightField(track: Track): HeightField {
+export function buildHeightField(track: Track, foothills = false): HeightField {
+  const land = foothills
+    ? (x: number, z: number) => naturalHeight(x, z) +
+      18 * Math.exp(-(((x - 131) / 44) ** 2 + ((z + 91) / 32) ** 2))
+    : naturalHeight;
   const { samples } = track;
   const n = samples.length;
 
   // Road profile: follow the natural hills with one short low-pass pass, removing
   // spline-scale grade changes without cutting long flat ramps into the terrain.
-  let prof = samples.map((s) => naturalHeight(s.x, s.z));
+  let prof = samples.map((s) => land(s.x, s.z));
   // The former three 22 m passes over-smoothed the profile: it followed the hills from
   // far away, creating cut slopes that read as a continuous trench. A single, narrower
   // pass preserves broad grades while filtering spline-scale bumps.
@@ -103,7 +107,7 @@ export function buildHeightField(track: Track): HeightField {
   const roadDist = (x: number, z: number) => sample(dist, x, z);
 
   const height = (x: number, z: number): number => {
-    const nat = naturalHeight(x, z);
+    const nat = land(x, z);
     const d = roadDist(x, z);
     if (d >= ROAD_HALF_WIDTH + VERGE + BLEND) return nat;
     const w = 1 - smoothstep(ROAD_HALF_WIDTH + VERGE, ROAD_HALF_WIDTH + VERGE + BLEND, d);

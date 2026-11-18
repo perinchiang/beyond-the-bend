@@ -30,6 +30,11 @@
       }
       #toast.show { opacity: 1; transform: translate(-50%, 0); }
       #toast.off { display: none; }
+      #destination {
+        position: fixed; top: max(14px, env(safe-area-inset-top)); left: max(12px, env(safe-area-inset-left));
+        max-width: 42vw; color: #403a30; background: rgba(243,236,221,.86); border-radius: 8px;
+        padding: 6px 10px; font: 600 12px/1.4 ui-rounded, system-ui, sans-serif; pointer-events: none;
+      }
       #stats { position: fixed; right: 16px; top: 12px; color: #6b6253; font: 11px ui-monospace, Menlo, monospace; pointer-events: none; }
     </style>
   </head>
@@ -41,6 +46,7 @@
       <span id="hud-cam"></span><br />
       <b>T</b> — miniature lens &nbsp;·&nbsp; <b>H</b> — hide
     </div>
+    <div id="destination" role="status" hidden>Follow the road to Foothill Station</div>
     <div id="toast"></div>
     <div id="stats"></div>
     <script type="module" src="/src/main.ts"></script>

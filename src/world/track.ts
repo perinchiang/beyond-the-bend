@@ -13,6 +13,15 @@ const CONTROL: ReadonlyArray<readonly [number, number]> = [
   [-152, -64], [-116, -18], [-126, 30], [-152, 58], [-144, 88],
 ];
 
+// The outward leg leaves town due east, alongside the hayfield, then sweeps
+// north to the station. Beyond the platform the road leads back around the hills.
+const FOOTHILL: typeof CONTROL = [
+  [-143, 76], [-125, 76], [-108, 76], [-58, 76], [0, 76], [35, 75], [61, 69],
+  [86, 55], [106, 34], [120, 8], [134, -21], [147, -49],
+  [147, -87], [118, -120], [56, -131], [-27, -124], [-95, -94],
+  [-140, -53], [-155, 1], [-155, 53],
+];
+
 export const ROAD_HALF_WIDTH = 3.3; // asphalt half width (m)
 export const ROAD_SKIRT = 0.5; // dirt shoulder carried by the road ribbon itself
 export const TRACK_STEP = 0.5; // centre-line sample spacing (m)
@@ -38,9 +47,9 @@ export interface Track {
   at(s: number): TrackSample;
 }
 
-export function buildTrack(): Track {
+export function buildTrack(route: 'circuit' | 'foothill' = 'circuit'): Track {
   const curve = new THREE.CatmullRomCurve3(
-    CONTROL.map(([x, z]) => new THREE.Vector3(x, 0, z)),
+    (route === 'foothill' ? FOOTHILL : CONTROL).map(([x, z]) => new THREE.Vector3(x, 0, z)),
     true,
     'centripetal',
   );

@@ -25,7 +25,7 @@ npm run car          # regenerate public/models/car.glb with Blender (needs `ble
 | `T` | miniature lens on/off |
 | `H` | hide the legend |
 
-The default art direction is gouache. For the earlier diorama, use `?study=original`. The [Close comparison](public/studies/close.html) includes the oil, print and gouache studies.
+The main entrance starts in Close view at the village exit. Follow the hayfield road through its broad bend to the clock tower at Foothill Station (306 m), then keep driving to return through the hills. Reload to start the trip again. Use `?route=circuit` for the earlier road layout in gouache. For the earlier diorama, use `?study=original`. The [Close comparison](public/studies/close.html) includes the oil, print and gouache studies.
 
 URL options: `?cam=free`, `?preset=0|1|2`, `?s=<metres along the road>`, `?q=low|high`,
 `?tilt=0`, `?stats=1`, `?hud=0`, `?haze=<0..1>`. `?lens=ortho` restores the old parallel projection
@@ -44,8 +44,8 @@ parallel projection.
   | preset | tilt | lens | view height at the car | car position | yaw time constant |
   |---|---|---|---|---|---|
   | High | 55° | 36° | 66 m | 13 % below centre | 0.60 s |
-  | Normal (default) | 40° | 30° | 44 m | 18 % below centre | 0.52 s |
-  | Close | 22° | 30° | 24 m | 23 % below centre | 0.45 s |
+  | Normal | 40° | 30° | 44 m | 18 % below centre | 0.52 s |
+  | Close (station road) | 22° | 30° | 24 m | 23 % below centre | 0.45 s |
 
 - **Free / photo** — orbit, tilt, zoom and pan. It follows the car's horizontal position immediately,
   smooths only height over grade changes, and does not track its heading.
@@ -102,7 +102,7 @@ this and laps the road with a tap-steering keyboard driver that has human reacti
 | Layer | Source |
 |---|---|
 | Terrain shape | Procedural height field (fBm + one authored hill and dip), 320×320 grid. The road corridor is cut in with a distance field so verges are flat and embankments ease into the hills. |
-| Road | Hand-authored closed Catmull-Rom spline (25 control points, 1.3 km). A ribbon mesh carries exact lateral coordinates, so edge lines and dashes are analytic and stay crisp. |
+| Road | Two hand-authored closed Catmull-Rom splines: the station road and the original 1.3 km circuit. A ribbon mesh carries exact lateral coordinates, so edge lines and dashes are analytic and stay crisp. |
 | Terrain paint | Custom GLSL injected into Three's Lambert material: broad gouache washes, brush-dab edges, short grass ticks, dry-brush grain, painted form shading from terrain curvature, earth shoulders, drifting cloud shadows, and a stippled dissolve into paper at the world edge. |
 | Textures | World-space noise and brush strokes are baked at startup. Two small Canvas2D atlases hold birch sprays and the broadleaf, fir and thorn brush shapes. |
 | Vegetation, rocks | Round-shouldered oak, lime and plum crowns on painted bark, open fir boughs and arching thorn shoots use species-specific silhouettes and painted edges. Low fieldstone ledges share a broken mineral seam across their faces, with moss and grass at the base. Geometry is instanced in 100 m chunks. |

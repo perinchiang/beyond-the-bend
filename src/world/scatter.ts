@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { StyleStudy } from '../render/styleStudy';
 import { Rng } from '../core/rng';
 import { fbm2, noise2, smoothstep } from '../core/noise';
+import type { StationJourney } from './station';
 import { HeightField } from './heightfield';
 import { ROAD_HALF_WIDTH, Track } from './track';
 import { edgeDistance, type GroundPatch } from './terrain';
@@ -50,7 +51,7 @@ class Batcher {
 
 export interface ScatterStats { trees: number; bushes: number; rocks: number; tufts: number; flowers: number }
 
-export function buildScatter(track: Track, hf: HeightField, shared: PaintShared, lowSpec: boolean, study?: StyleStudy): { group: THREE.Group; stats: ScatterStats; patches: GroundPatch[] } {
+export function buildScatter(track: Track, hf: HeightField, shared: PaintShared, lowSpec: boolean, study?: StyleStudy, journey?: StationJourney): { group: THREE.Group; stats: ScatterStats; patches: GroundPatch[] } {
   const group = new THREE.Group();
   group.name = 'scatter';
   const rng = new Rng(7331);
@@ -166,6 +167,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   const stats: ScatterStats = { trees: 0, bushes: 0, rocks: 0, tufts: 0, flowers: 0 };
 
   const free = (x: number, z: number, r: number) => {
+    if (journey?.keepClear(x, z)) return false;
     for (const o of placed) if ((o.x - x) ** 2 + (o.z - z) ** 2 < (o.r + r) ** 2) return false;
     return true;
   };
@@ -212,6 +214,9 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   const tree = (sp: Species, x: number, z: number, scale: number, radius = 3.2, roadGap = 7.5, edgeLimit = -13): boolean => {
     // Leave an opening in the hairpin plantation to reveal the exit meadow.
     if (Math.hypot((x - 68) / 12, (z + 136) / 15) < 1) return false;
+    // Open the field beside the outgoing straight and the inside of the station bend.
+    if (journey && ((x > -81 && x < 62 && z > 48 && z < 102) ||
+      (x > 62 && x < 145 && z > -30 && z < 72 && hf.roadDist(x, z) < 18))) return false;
     if (!ok(x, z, roadGap, edgeLimit) || !free(x, z, radius * scale * 0.72)) return false;
     put(woodyPlants, sp, x, z, scale);
     placed.push({ x, z, r: radius * scale * 0.72 });
@@ -243,7 +248,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     let i = 0;
     for (let d = s0; d < s1; d += step) fn(track.at(d), i++);
   };
-  const sA = nearestS(-70, 112), sB = nearestS(48, 104);
+  const sA = journey ? 49 : nearestS(-70, 112), sB = journey ? 65 : nearestS(48, 104);
   along(sA, sB, 9.5, (t, i) => {
     for (const side of [-1, 1]) {
       if ((i + (side > 0 ? 1 : 0)) % 7 === 3) continue; // leave the odd gap
@@ -316,6 +321,14 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   });
 
   // ---------- 3. understorey: bushes hug tree bases and the verge ----------
+  if (journey) {
+    for (const side of [-1, 1]) {
+      for (let d = 49; d < (side < 0 ? 67 : 82); d += 1.8) {
+        const site = roadside(d, side * rng.range(6.8, 7.5));
+        bush(site.x, site.z, rng.range(0.9, 1.15));
+      }
+    }
+  }
   const treeCount = placed.length;
   for (let i = 0; i < treeCount; i++) {
     const o = placed[i];
@@ -480,8 +493,14 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
       }
     });
   };
-  fence(nearestS(128, 98), nearestS(150, 10), 1);
-  fence(nearestS(-70, 112) - 6, nearestS(-70, 112) + 70, -1);
+  if (journey) {
+    fence(43, 71, 1);
+    fence(80, 113, -1);
+    journey.draw(props, hf);
+  } else {
+    fence(nearestS(128, 98), nearestS(150, 10), 1);
+    fence(nearestS(-70, 112) - 6, nearestS(-70, 112) + 70, -1);
+  }
 
   const propMesh = new THREE.Mesh(props.build(), propMat);
   propMesh.castShadow = true;

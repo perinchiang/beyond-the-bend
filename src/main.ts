@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { stationJourney, TOWN_EXIT_S } from './world/station';
 import { buildTrack } from './world/track';
 import { buildHeightField } from './world/heightfield';
 import { WORLD_HALF } from './world/heightfield';
@@ -56,9 +57,11 @@ const hemi = new THREE.HemisphereLight(new THREE.Color(PAL.sky), new THREE.Color
 scene.add(hemi);
 
 // ---- world ----
-const track = buildTrack();
-const hf = buildHeightField(track);
-const scatter = buildScatter(track, hf, shared, lowSpec, study);
+const scenic = !styleParam && params.get('route') !== 'circuit';
+const track = buildTrack(scenic ? 'foothill' : 'circuit');
+const journey = scenic ? stationJourney(track) : undefined;
+const hf = buildHeightField(track, scenic);
+const scatter = buildScatter(track, hf, shared, lowSpec, study, journey);
 scene.add(buildTerrain(hf, shared, scatter.patches, study));
 scene.add(buildRoad(track, shared, study));
 scene.add(scatter.group);
@@ -73,19 +76,19 @@ renderer.info.autoReset = false;
 post.setTilt(num('tilt', lowSpec ? 0 : 1));
 
 // ---- start pose ----
-const startS = num('s', previewStudy ? 470 : 232);
+const startS = num('s', scenic ? TOWN_EXIT_S : previewStudy ? 470 : 232);
 function placeAt(s: number) {
   const t = track.at(s);
   car.place(t.x - t.tz * -1.65, t.z + t.tx * -1.65, Math.atan2(t.tx, t.tz));
 }
 placeAt(startS);
-// Camera: Driving / Normal by default. `?cam=free` (optionally with yaw, pitch, zoom, x, z) starts in photo mode.
+// Driving starts Close on the station road and in art previews. `?cam=free` (optionally with yaw, pitch, zoom, x, z) starts in photo mode.
 const lens = { focus: 0.47, inner: 0.17, fade: 0 };
 function initCamera() {
   if (params.get('cam') === 'free' || params.has('x')) {
     const fixed = params.has('x') && params.has('z') ? new THREE.Vector3(num('x', 0), hf.height(num('x', 0), num('z', 0)), num('z', 0)) : undefined;
     rig.setFree(num('yaw', 38), num('pitch', 47), num('zoom', 46), fixed);
-  } else rig.setDrive(THREE.MathUtils.clamp(Math.round(num('preset', previewStudy ? 2 : DEFAULT_PRESET)), 0, DRIVE_PRESETS.length - 1));
+  } else rig.setDrive(THREE.MathUtils.clamp(Math.round(num('preset', scenic || previewStudy ? 2 : DEFAULT_PRESET)), 0, DRIVE_PRESETS.length - 1));
   rig.update(0, car.position, car.heading, true);
   lens.focus = rig.mode === 'drive' ? 0.57 : 0.47;
   lens.inner = rig.mode === 'drive' ? 0.27 : 0.17;
@@ -103,6 +106,9 @@ const touch = new TouchControls(
   () => { rig.toggleMode(); announceCamera(); },
   () => { rig.cyclePreset(); announceCamera(); },
 );
+const destination = document.getElementById('destination')!;
+destination.hidden = !scenic || params.get('hud') === '0';
+let arrived = false;
 let toastTimer = 0;
 function announceCamera(hint?: string) {
   touch.updateCamera(rig.mode, rig.preset.name);
@@ -118,7 +124,10 @@ function announceCamera(hint?: string) {
 addEventListener('keydown', (e) => {
   if (e.repeat) return;
   keys.add(e.code);
-  if (e.code === 'KeyH') hud.classList.toggle('hidden');
+  if (e.code === 'KeyH') {
+    hud.classList.toggle('hidden');
+    destination.hidden = !scenic || hud.classList.contains('hidden');
+  }
   if (e.code === 'KeyT') post.setTilt(post.tilt > 0 ? 0 : 1);
   if (e.code === 'KeyC') { rig.toggleMode(); announceCamera(); }
   if (e.code === 'KeyV') announceCamera(rig.cyclePreset() ? undefined : 'View presets belong to the driving camera — press C');
@@ -203,6 +212,10 @@ function frame(now: number) {
     brake: keys.has('Space') || touch.input.brake,
   };
   car.update(dt, input);
+  if (!arrived && journey?.atStation(car.x, car.z)) {
+    arrived = true;
+    destination.textContent = 'Arrived at Foothill Station';
+  }
   rig.orbit(((keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0)) * dt * 1.4, ((keys.has('KeyR') ? 1 : 0) - (keys.has('KeyF') ? 1 : 0)) * dt * 0.9);
   if (keys.has('KeyZ')) rig.zoom(Math.exp(-dt * 1.3));
   if (keys.has('KeyX')) rig.zoom(Math.exp(dt * 1.3));
