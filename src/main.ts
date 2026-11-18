@@ -200,7 +200,12 @@ function frame(now: number) {
   shared.uHaze.value.set(rig.distance * 1.15, rig.distance * 3.4, rig.ortho ? 0 : num('haze', 0.42));
   // Driving only: photo mode keeps its foreground.
   lens.fade += ((rig.mode === 'drive' && !rig.ortho ? 1 : 0) - lens.fade) * (1 - Math.exp(-dt * 3));
-  shared.uLensFade.value.set(rig.distance * 0.42 * lens.fade, rig.distance * 0.62 * lens.fade);
+  shared.uLensFade.value = lens.fade;
+  const sightStart = shared.uSightStart.value.copy(car.position);
+  sightStart.y += 0.95;
+  shared.uSightEnd.value.set(car.position.x + 10 * Math.sin(car.heading), car.position.y + 0.4,
+    car.position.z + 10 * Math.cos(car.heading)).applyMatrix4(rig.camera.matrixWorldInverse);
+  sightStart.applyMatrix4(rig.camera.matrixWorldInverse);
   post.setZoom(rig.viewHeight);
   // Lens focus: photo mode keeps the band around mid-frame; driving slides it up the screen
   // so the car and the road ahead of it stay crisp. Eased, like every other camera change.

@@ -11,7 +11,8 @@ const wrap = (a: number) => Math.atan2(Math.sin(a), Math.cos(a));
 
 /** A flat world with one straight road along +Z, for isolating the vehicle from the track. */
 function straightWorld(): HeightField {
-  return { height: () => 0, surface: () => 0, roadDist: (x: number) => Math.min(40, Math.abs(x)), normal: (_x, _z, out) => out.set(0, 1, 0), sdfTexture: null as never, fieldMax: 40 };
+  return { height: () => 0, surface: () => 0, roadDist: (x: number) => Math.min(40, Math.abs(x)), vergeWidth: () => 0.85,
+    normal: (_x, _z, out) => out.set(0, 1, 0), sdfTexture: null as never, fieldMax: 40 };
 }
 const newCar = (hf: HeightField) => new Car(hf, {} as never);
 

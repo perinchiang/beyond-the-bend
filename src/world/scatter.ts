@@ -96,12 +96,13 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   const propMat = paintMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), shared, { key: 'prop' });
 
   // ---------- model library ----------
+  const birchSprays = lowSpec ? 12 : 18;
   const lib = {
     oak: [makeBroadleaf(11, FOLIAGE.oak), makeBroadleaf(12, FOLIAGE.oak)],
     lime: [makeBroadleaf(21, FOLIAGE.lime), makeBroadleaf(22, FOLIAGE.lime)],
     plum: [makeBroadleaf(31, FOLIAGE.plum)],
     fir: [makeConifer(41, FOLIAGE.fir), makeConifer(42, FOLIAGE.fir)],
-    birch: [makeBirch(51, FOLIAGE.birch), makeBirch(52, FOLIAGE.birch)],
+    birch: [makeBirch(51, FOLIAGE.birch, birchSprays), makeBirch(52, FOLIAGE.birch, birchSprays)],
     bush: [makeBush(61, FOLIAGE.bush), makeBush(62, FOLIAGE.bush)],
     bloom: [makeBush(71, FOLIAGE.bloom)],
     rock: [makeRock(81), makeRock(82), makeRock(83)],
@@ -133,8 +134,10 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     batch.add(`${sp}${vi}`, geos[vi], m, tint);
   };
 
-  const tree = (sp: Species, x: number, z: number, scale: number, radius = 3.2, roadGap = 7.5): boolean => {
-    if (!ok(x, z, roadGap) || !free(x, z, radius * scale * 0.72)) return false;
+  const tree = (sp: Species, x: number, z: number, scale: number, radius = 3.2, roadGap = 7.5, edgeLimit = -13): boolean => {
+    // Leave an opening in the hairpin plantation to reveal the exit meadow.
+    if (Math.hypot((x - 68) / 12, (z + 136) / 15) < 1) return false;
+    if (!ok(x, z, roadGap, edgeLimit) || !free(x, z, radius * scale * 0.72)) return false;
     put(trees, sp, x, z, scale);
     placed.push({ x, z, r: radius * scale * 0.72 });
     stats.trees++;
@@ -167,15 +170,37 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   along(sA, sB, 9.5, (t, i) => {
     for (const side of [-1, 1]) {
       if ((i + (side > 0 ? 1 : 0)) % 7 === 3) continue; // leave the odd gap
-      const off = side * (HW + 6.2 + rng.range(-0.5, 0.8)), j = rng.range(-1.2, 1.2);
+      const off = side * (HW + 7.1 + (i % 4 === 1 ? 2.2 : 0) + rng.range(-0.5, 0.8)), j = rng.range(-1.2, 1.2);
       tree('birch', t.x - t.tz * off + t.tx * j, t.z + t.tx * off + t.tz * j, rng.range(0.85, 1.12), 1.9, 4.6);
     }
   });
 
+  // Three approach silhouettes: the plum beyond the avenue, a stepped
+  // granite spur on the second S, and a fan of firs framing the hairpin.
+  const roadside = (distance: number, offset: number) => {
+    const t = track.at(distance);
+    return { x: t.x - t.tz * offset, z: t.z + t.tx * offset };
+  };
+  const plum = roadside(sB + 3, 11.5);
+  tree('plum', plum.x, plum.z, 1.18);
+  const spur = nearestS(52, -36);
+  for (const [advance, offset, scale] of [[-5, 9.8, 1.4], [0, 10.4, 2.75], [4, 10, 2.05], [7, 8.4, 1.1]]) {
+    const site = roadside(spur + advance, offset);
+    rock(site.x, site.z, scale);
+  }
+  for (const [x, z, scale] of [[87, -139, 1.38], [91, -135, 1.12], [84, -136, 1.03], [80, -134, 0.84]]) {
+    tree('fir', x, z, scale, 2.1, 4.0);
+  }
+  // Stagger low silhouettes behind the open southern sweep, leaving breaks
+  // through which the far meadow still fades into paper.
+  for (const [x, z, scale] of [[162, 94, 0.72], [166, 91, 0.94], [163, 85, 0.60], [160, 73, 0.68]]) {
+    tree('lime', x, z, scale, 3.2, 7.5, 1);
+  }
+
   // Authored groves: [x, z, radius, count, species mix]
   const groves: [number, number, number, number, Species[]][] = [
     [34, 44, 34, 20, ['oak', 'oak', 'lime', 'plum']], // on the landmark hill
-    [84, -128, 20, 12, ['fir', 'fir', 'oak']], // inside the northern hairpin
+    [87, -128, 12, 7, ['fir', 'fir', 'oak']], // inside the northern hairpin
     [96, -48, 22, 11, ['oak', 'lime', 'fir']], // between the esses
     [-100, -104, 26, 15, ['fir', 'fir', 'fir', 'oak']], // north-west fir stand
     [-20, 6, 30, 16, ['oak', 'lime', 'oak', 'plum']], // central wood
@@ -257,14 +282,16 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     const fine = noise2(px / 7.5, pz / 7.5, 91);
     if (drift + fine * 0.3 < 0.02 + rng.next() * 0.16) continue; // tufts gather in drifts, leaving calm open paint
     const d = hf.roadDist(px, pz);
-    if (d < HW + 1.25 || edgeDistance(px, pz) > -12) continue;
+    const bank = d - HW - hf.vergeWidth(px, pz);
+    if (bank < 0.38 || edgeDistance(px, pz) > -12) continue;
+    if (bank < 5 && drift + fine * 0.35 < 0.15) continue;
     const tone = noise2(px / 58 + 4, pz / 58 - 6, 123) + rng.gauss() * 0.3;
     tint.copy(tone > 0.25 ? tuftLight : tone < -0.25 ? tuftDeep : tuftMid);
-    if (d < HW + 4 && rng.next() < 0.4) tint.copy(tuftDry);
+    if (bank < 1.65) tint.copy(tuftDry);
     tint.multiplyScalar(rng.range(0.9, 1.08));
     e.set(0, rng.range(0, 6.28), 0);
     q.setFromEuler(e);
-    const sc = rng.range(0.75, 1.5) * (d < HW + 4 ? 0.8 : 1);
+    const sc = rng.range(0.75, 1.5) * (0.66 + 0.34 * smoothstep(0.4, 2.6, bank));
     s.set(sc, sc * rng.range(0.8, 1.3), sc);
     p.set(px, hf.height(px, pz) - 0.02, pz);
     m.compose(p, q, s);
@@ -282,7 +309,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     const main = rng.pick(flowerCols), rad = rng.range(1.8, 6), count = rng.int(10, 42);
     for (let j = 0; j < count; j++) {
       const px = cx + rng.gauss() * rad, pz = cz + rng.gauss() * rad;
-      if (hf.roadDist(px, pz) < HW + 1.5 || edgeDistance(px, pz) > -12) continue;
+      if (hf.roadDist(px, pz) < HW + hf.vergeWidth(px, pz) + 0.7 || edgeDistance(px, pz) > -12) continue;
       tint.copy(rng.next() < 0.82 ? main : rng.pick(flowerCols)).multiplyScalar(rng.range(0.92, 1.0));
       const sc = rng.range(0.09, 0.17);
       e.set(rng.range(-0.3, 0.3), rng.range(0, 6.28), rng.range(-0.3, 0.3));

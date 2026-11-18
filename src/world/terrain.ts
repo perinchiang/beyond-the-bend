@@ -111,14 +111,14 @@ export function buildTerrain(hf: HeightField, shared: PaintShared): THREE.Mesh {
         g *= 1.0 + (nC.b - 0.5) * 0.085 + (nC.a - 0.5) * 0.075;
 
         // --- Road shoulder: trodden dry grass, then bare earth meeting the asphalt.
-        float d = texture2D(uSdf, p / (2.0 * uWorldHalf) + 0.5).r;
-        if (d < uHalfRoad + 7.0) {
-          float dry = 1.0 - smoothstep(uHalfRoad + 0.6, uHalfRoad + 5.0, d + (nB.r - 0.5) * 3.0);
-          g = mix(g, cDry * (1.0 + (nC.b - 0.5) * 0.1), dry * 0.50);
-          float wide = smoothstep(0.44, 0.62, nB.g);   // the verge breathes in and out
-          float wob = clamp(nB.b * 1.6 - 0.45, 0.0, 1.0) * 0.5 + nC.g * 0.25 + s1.g * 0.2 + wide * 0.9;
-          float dirt = 1.0 - smoothstep(uHalfRoad + 0.45 + wob, uHalfRoad + 0.85 + wob, d);
-          if (dirt > 0.0) g = mix(g, dirtColor(p), dirt);
+        vec2 verge = texture2D(uSdf, p / (2.0 * uWorldHalf) + 0.5).rg;
+        if (verge.x < uHalfRoad + 7.0) {
+          float edge = verge.x - uHalfRoad - verge.y;
+          float brush = (nC.b - 0.5) * 0.48 + (s1.g - 0.3) * 0.35;
+          float turf = smoothstep(-0.18, 0.78, edge + brush);
+          float straw = 1.0 - smoothstep(-0.1, 1.65, edge + (nB.r - 0.5) * 0.7);
+          g = mix(g, cDry, straw * 0.50);
+          g = mix(dirtColor(p), g, turf);
         }
 
         diffuseColor.rgb = g;

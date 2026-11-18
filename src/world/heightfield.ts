@@ -30,6 +30,8 @@ export interface HeightField {
   surface(x: number, z: number): number;
   /** Distance to the road centre line, clamped to FIELD_MAX. */
   roadDist(x: number, z: number): number;
+  /** Painted bare-earth width beyond the asphalt, also used for planting. */
+  vergeWidth(x: number, z: number): number;
   normal(x: number, z: number, out: THREE.Vector3): THREE.Vector3;
   /** Road distance as a filterable texture for the terrain shader. */
   sdfTexture: THREE.DataTexture;
@@ -61,9 +63,17 @@ export function buildHeightField(track: Track): HeightField {
 
   // Stamp nearest-centre-line distance and road height into a grid.
   const dist = new Float32Array(FIELD_N * FIELD_N).fill(FIELD_MAX);
+  const width = new Float32Array(dist.length);
   const rh = new Float32Array(FIELD_N * FIELD_N);
   const R = Math.ceil(FIELD_MAX / FIELD_RES);
   for (const s of samples) {
+    // The inside shoulder opens into a cut patch; the opposite bank grows
+    // close to the asphalt. A slow wash breaks up equally curved stretches.
+    const wash = noise2(s.x / 31, s.z / 31, 406);
+    const bend = Math.max(-1, Math.min(1, s.k * 28));
+    const shoulder = (side: number) => Math.max(0.38, 0.85 + wash * 0.60
+      + Math.max(0, side * bend) * 1.95 - Math.max(0, -side * bend) * 0.60);
+    const leftWidth = shoulder(-1), rightWidth = shoulder(1);
     const cx = Math.floor((s.x + WORLD_HALF) / FIELD_RES), cz = Math.floor((s.z + WORLD_HALF) / FIELD_RES);
     const x0 = Math.max(0, cx - R), x1 = Math.min(FIELD_N - 1, cx + R);
     const z0 = Math.max(0, cz - R), z1 = Math.min(FIELD_N - 1, cz + R);
@@ -76,6 +86,7 @@ export function buildHeightField(track: Track): HeightField {
         if (d < dist[idx]) {
           dist[idx] = d;
           rh[idx] = s.y;
+          width[idx] = -s.tz * wx + s.tx * wz > 0 ? rightWidth : leftWidth;
         }
       }
     }
@@ -113,12 +124,15 @@ export function buildHeightField(track: Track): HeightField {
     return out.set(height(x - e, z) - height(x + e, z), 2 * e, height(x, z - e) - height(x, z + e)).normalize();
   };
 
-  const half = new Uint16Array(FIELD_N * FIELD_N);
-  for (let i = 0; i < half.length; i++) half[i] = THREE.DataUtils.toHalfFloat(dist[i]);
-  const sdfTexture = new THREE.DataTexture(half, FIELD_N, FIELD_N, THREE.RedFormat, THREE.HalfFloatType);
+  const half = new Uint16Array(dist.length * 2);
+  for (let i = 0; i < dist.length; i++) {
+    half[2 * i] = THREE.DataUtils.toHalfFloat(dist[i]);
+    half[2 * i + 1] = THREE.DataUtils.toHalfFloat(width[i]);
+  }
+  const sdfTexture = new THREE.DataTexture(half, FIELD_N, FIELD_N, THREE.RGFormat, THREE.HalfFloatType);
   sdfTexture.minFilter = sdfTexture.magFilter = THREE.LinearFilter;
   sdfTexture.wrapS = sdfTexture.wrapT = THREE.ClampToEdgeWrapping;
   sdfTexture.needsUpdate = true;
 
-  return { height, surface, roadDist, normal, sdfTexture, fieldMax: FIELD_MAX };
+  return { height, surface, roadDist, vergeWidth: (x, z) => sample(width, x, z), normal, sdfTexture, fieldMax: FIELD_MAX };
 }

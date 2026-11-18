@@ -169,8 +169,10 @@ export interface PaintShared {
   /** Aerial perspective: distance from the lens where haze starts / is complete, and its strength. */
   uHaze: THREE.IUniform<THREE.Vector3>;
   uHazeColor: THREE.IUniform<THREE.Color>;
-  /** Foliage closer to the lens than x is dissolved away entirely, beyond y it is solid. */
-  uLensFade: THREE.IUniform<THREE.Vector2>;
+  /** Occlusion corridor in view space: vehicle roof to the road just ahead. */
+  uSightStart: THREE.IUniform<THREE.Vector3>;
+  uSightEnd: THREE.IUniform<THREE.Vector3>;
+  uLensFade: THREE.IUniform<number>;
   [k: string]: THREE.IUniform;
 }
 
@@ -193,7 +195,9 @@ export function createPaintShared(renderer: THREE.WebGLRenderer, worldHalf: numb
     uCloud: { value: 0.24 },
     uHaze: { value: new THREE.Vector3(1e6, 2e6, 0) },
     uHazeColor: { value: col(PAL.haze) },
-    uLensFade: { value: new THREE.Vector2(0, 0) },
+    uSightStart: { value: new THREE.Vector3() },
+    uSightEnd: { value: new THREE.Vector3() },
+    uLensFade: { value: 0 },
   };
 }
 
@@ -209,7 +213,8 @@ uniform vec3 uDirtDark;
 uniform float uCloud;
 uniform vec3 uHaze;
 uniform vec3 uHazeColor;
-uniform vec2 uLensFade;
+uniform float uLensFade;
+uniform vec3 uSightStart, uSightEnd;
 varying vec3 vWorldPos;
 
 vec2 rot2(vec2 p, float a) { float c = cos(a), s = sin(a); return vec2(c * p.x - s * p.y, s * p.x + c * p.y); }
@@ -237,12 +242,23 @@ vec3 dirtColor(vec2 p) {
 }
 `;
 
-// A crown that drifts between the lens and the car would fill a corner of the frame and
-// sweep across it. Thin it out in stipples instead, like the diorama's paper edge.
+// Test the projected car-to-road segment. Foliage behind the relevant part
+// of the segment, or off to either side of it, keeps its painted silhouette.
 const LENS_FADE = /* glsl */ `
-{
-  float lensDist = distance(cameraPosition, vWorldPos);
-  if (lensDist < uLensFade.y && hash21(floor(gl_FragCoord.xy * 0.5)) > smoothstep(uLensFade.x, uLensFade.y, lensDist)) discard;
+if (uLensFade > 0.001 && max(uSightStart.z, uSightEnd.z) < -0.1) {
+  vec3 eye = (viewMatrix * vec4(vWorldPos, 1.0)).xyz;
+  float depth = -eye.z;
+  vec2 a = uSightStart.xy / -uSightStart.z;
+  vec2 b = uSightEnd.xy / -uSightEnd.z;
+  vec2 delta = b - a;
+  vec2 offset = eye.xy / depth - a;
+  float t = clamp(dot(offset, delta) / max(dot(delta, delta), 0.000001), 0.0, 1.0);
+  float targetDepth = 1.0 / mix(-1.0 / uSightStart.z, -1.0 / uSightEnd.z, t);
+  float separation = length(offset - delta * t) * targetDepth;
+  float width = mix(2.5, 1.9, t);
+  float mask = (1.0 - smoothstep(width, width + 1.4, separation))
+             * smoothstep(0.6, 2.0, targetDepth - depth) * uLensFade;
+  if (mask > 0.0 && hash21(floor(gl_FragCoord.xy)) < mask) discard;
 }
 `;
 

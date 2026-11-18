@@ -20,7 +20,7 @@ export function buildRoad(track: Track, shared: PaintShared): THREE.Mesh {
 
   const pos = new Float32Array((n + 1) * cols * 3);
   const nor = new Float32Array((n + 1) * cols * 3);
-  const uv = new Float32Array((n + 1) * cols * 2);
+  const uv = new Float32Array((n + 1) * cols * 3);
   const t3 = new THREE.Vector3(), l3 = new THREE.Vector3(), n3 = new THREE.Vector3();
   for (let i = 0; i <= n; i++) {
     const s = samples[i % n];
@@ -36,8 +36,9 @@ export function buildRoad(track: Track, shared: PaintShared): THREE.Mesh {
       pos[j * 3 + 1] = s.y + drop[c];
       pos[j * 3 + 2] = s.z + l3.z * lat[c];
       nor[j * 3] = n3.x; nor[j * 3 + 1] = n3.y; nor[j * 3 + 2] = n3.z;
-      uv[j * 2] = lat[c];
-      uv[j * 2 + 1] = (i === n ? length : s.s) * vScale;
+      uv[j * 3] = lat[c];
+      uv[j * 3 + 2] = s.k;
+      uv[j * 3 + 1] = (i === n ? length : s.s) * vScale;
     }
   }
   const idx: number[] = [];
@@ -53,7 +54,7 @@ export function buildRoad(track: Track, shared: PaintShared): THREE.Mesh {
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
-  geo.setAttribute('aRoad', new THREE.BufferAttribute(uv, 2));
+  geo.setAttribute('aRoad', new THREE.BufferAttribute(uv, 3));
   geo.setIndex(idx);
   geo.computeBoundingSphere();
 
@@ -66,12 +67,12 @@ export function buildRoad(track: Track, shared: PaintShared): THREE.Mesh {
       cAsphalt: C(PAL.asphalt), cAsphaltLight: C(PAL.asphaltLight), cAsphaltDark: C(PAL.asphaltDark),
       cLine: C(PAL.line), cCentre: C(PAL.lineCentre),
     },
-    vertexPars: /* glsl */ `attribute vec2 aRoad;\nvarying vec2 vRoad;`,
+    vertexPars: /* glsl */ `attribute vec3 aRoad;\nvarying vec3 vRoad;`,
     vertexMain: /* glsl */ `vRoad = aRoad;`,
     fragPars: /* glsl */ `
       uniform float uHalfRoad, uDash;
       uniform vec3 cAsphalt, cAsphaltLight, cAsphaltDark, cLine, cCentre;
-      varying vec2 vRoad;
+      varying vec3 vRoad;
     `,
     fragColor: /* glsl */ `
       {
@@ -91,7 +92,9 @@ export function buildRoad(track: Track, shared: PaintShared): THREE.Mesh {
         a = mix(a, cAsphaltDark, smoothstep(uHalfRoad - 0.9, uHalfRoad, d) * 0.22);
         // Dust drifting in from the verge.
         vec3 earth = dirtColor(p);
-        a = mix(a, earth * 0.92, smoothstep(uHalfRoad - 0.55, uHalfRoad + 0.1, d + (nC.g - 0.5) * 0.5) * 0.30);
+        float cut = clamp(sign(vRoad.x) * vRoad.z * 28.0, 0.0, 1.0);
+        float dust = smoothstep(uHalfRoad - 0.38 - cut * 0.74, uHalfRoad + 0.1, d + (nC.g - 0.5) * 0.5);
+        a = mix(a, earth * 0.92, dust * (0.2 + cut * 0.34));
         a *= 1.0 + (nC.b - 0.5) * 0.10 + (dab - 0.3) * 0.025;
 
         // Painted markings — anti-aliased analytically, lightly worn by the same paint noise.
