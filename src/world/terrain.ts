@@ -3,6 +3,8 @@ import { HeightField, WORLD_HALF } from './heightfield';
 import { ROAD_HALF_WIDTH } from './track';
 import { PAL, PaintShared, paintMaterial } from '../render/paint';
 
+import { STUDY_STONE } from './birchStudy';
+
 const SEGMENTS = 320; // 1.25 m cells — plenty for gentle hills, light enough for mobile
 
 /** Distance (m) inside which the diorama starts dissolving into paper. Negative = safely inside. */
@@ -54,6 +56,7 @@ export function buildTerrain(hf: HeightField, shared: PaintShared): THREE.Mesh {
   const mat = paintMaterial(new THREE.MeshLambertMaterial({ color: 0xffffff }), shared, {
     key: 'terrain',
     uniforms: {
+      uStudyStone: { value: STUDY_STONE },
       uSdf: { value: hf.sdfTexture },
       uHalfRoad: { value: ROAD_HALF_WIDTH },
       cLight: C(PAL.grassLight), cMid: C(PAL.grassMid), cDeep: C(PAL.grassDeep),
@@ -62,6 +65,7 @@ export function buildTerrain(hf: HeightField, shared: PaintShared): THREE.Mesh {
     vertexPars: /* glsl */ `attribute float aForm;\nvarying float vForm;`,
     vertexMain: /* glsl */ `vForm = aForm;`,
     fragPars: /* glsl */ `
+      uniform vec2 uStudyStone;
       uniform sampler2D uSdf;
       uniform float uHalfRoad;
       uniform vec3 cLight, cMid, cDeep, cCool, cDry;
@@ -121,6 +125,18 @@ export function buildTerrain(hf: HeightField, shared: PaintShared): THREE.Mesh {
           g = mix(dirtColor(p), g, turf);
         }
 
+        // A few long pigment washes settle the study stone into the turf.
+        vec2 foot = p - uStudyStone;
+        if (abs(foot.x) < 4.8 && abs(foot.y) < 3.2) {
+          vec2 along = rot2(foot, -0.26);
+          float torn = (s1.b - 0.30) * 0.22 + (nC.r - 0.5) * 0.30;
+          float hollow = 1.0 - smoothstep(0.42, 1.05, length((along - vec2(0.30,0.43)) / vec2(3.5,1.78)) + torn);
+          float straw = 1.0 - smoothstep(0.30, 1.0, length((along + vec2(0.56,0.89)) / vec2(2.71,0.65)) + torn);
+          float contact = 1.0 - smoothstep(0.45, 1.55, length(foot / vec2(1.1,0.70)));
+          g = mix(g, cCool * 0.83, hollow * 0.51);
+          g = mix(g, cDry, straw * 0.48);
+          g *= 1.0 - contact * 0.22;
+        }
         diffuseColor.rgb = g;
 
         // --- Diorama edge: the world dissolves into paper through growing stippled holes.

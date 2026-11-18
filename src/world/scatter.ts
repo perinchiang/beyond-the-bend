@@ -7,6 +7,8 @@ import { edgeDistance } from './terrain';
 import { PaintShared, paintMaterial } from '../render/paint';
 import { FOLIAGE, PropBuilder, makeBirch, makeBroadleaf, makeBush, makeConifer, makeFlower, makeRock, makeTuft } from './flora';
 
+import { makeStudyBirch, studyStoneGeometry, STUDY_TREE, STUDY_STONE } from './birchStudy';
+
 const CHUNK = 100; // metres — instances are batched per chunk so off-screen groups are culled
 const HW = ROAD_HALF_WIDTH;
 
@@ -131,7 +133,21 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     m.compose(p, q, s);
     const v = 1 + rng.gauss() * jitter;
     tint.setRGB(v * (1 + rng.gauss() * 0.03), v, v * (1 + rng.gauss() * 0.04));
-    batch.add(`${sp}${vi}`, geos[vi], m, tint);
+    // Substitute only the two surveyed instances after consuming the usual
+    // placement draws, so the deterministic planting elsewhere stays identical.
+    if (sp === 'birch' && Math.hypot(x - STUDY_TREE.x, z - STUDY_TREE.y) < 0.6) {
+      const specimen = makeStudyBirch(shared, swayVertex);
+      specimen.position.copy(p);
+      group.add(specimen);
+    } else if (sp === 'rock' && Math.hypot(x - STUDY_STONE.x, z - STUDY_STONE.y) < 0.6) {
+      const stone = new THREE.Mesh(studyStoneGeometry(), rockMat);
+      stone.name = 'birch-study-stone';
+      stone.position.set(x, hf.height(x, z), z);
+      stone.castShadow = stone.receiveShadow = true;
+      group.add(stone);
+    } else {
+      batch.add(`${sp}${vi}`, geos[vi], m, tint);
+    }
   };
 
   const tree = (sp: Species, x: number, z: number, scale: number, radius = 3.2, roadGap = 7.5, edgeLimit = -13): boolean => {

@@ -15,7 +15,7 @@ const V = THREE.Vector3;
 const UP = new V(0, 1, 0);
 const C = (hex: string) => new THREE.Color(hex);
 
-class Builder {
+export class Builder {
   pos: number[] = [];
   nor: number[] = [];
   col: number[] = [];
@@ -87,7 +87,7 @@ function blob(b: Builder, c: THREE.Vector3, radii: THREE.Vector3, detail: number
 }
 
 /** Tapered tube through a list of rings — trunks and branches. */
-function tube(b: Builder, rings: { p: THREE.Vector3; r: number; c: THREE.Color }[], sides: number) {
+export function tube(b: Builder, rings: { p: THREE.Vector3; r: number; c: THREE.Color }[], sides: number) {
   const base: number[] = [];
   const n = new V(), p = new V();
   rings.forEach((ring, ri) => {
