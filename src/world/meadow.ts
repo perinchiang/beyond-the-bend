@@ -7,13 +7,25 @@ export function groundGrassCover(x: number, z: number) {
 }
 
 export const groundGrassPaint = /* glsl */ `
-float groundGrass(vec2 p, float patchNoise, float footprint) {
+uniform vec4 uFieldWake[4];
+float groundGrass(vec2 p, float patchNoise, float footprint, float field) {
   float cover = 1.0 - smoothstep(${innerRadius}.0, ${outerRadius}.0,
     distance(p, vec2(${centreX}.0, ${centreZ}.0)));
+  cover = max(cover, field);
   float detail = 1.0 - smoothstep(0.045, 0.19, footprint);
   if (cover <= 0.0) return 0.0;
-  float growth = smoothstep(0.28, 0.65, patchNoise);
+  float growth = max(field * 0.72, smoothstep(0.28, 0.65, patchNoise));
   float gust = sin(dot(p, vec2(0.19, 0.09)) - uTime * 1.55 + patchNoise * 1.8);
+  // Passing wheels press a short-lived sweep into the same painted stems.
+  if (field > 0.0) {
+    for (int i = 0; i < 4; ++i) {
+      vec2 offset = p - uFieldWake[i].xy;
+      float weight = (1.0 - smoothstep(0.1, 5.6, length(offset))) * uFieldWake[i].w;
+      gust += field * weight * exp(-max(0.0, uTime - uFieldWake[i].z) * 3.3)
+        * clamp((offset.x + offset.y) * 0.4, -1.0, 1.0);
+    }
+    gust = clamp(gust, -1.6, 1.6);
+  }
   // Unresolved leaves catch the light together; the meadow wash stays in place.
   float sheen = cover * growth * gust * 0.024;
   if (detail <= 0.0) return sheen;

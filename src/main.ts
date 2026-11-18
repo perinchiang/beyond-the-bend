@@ -77,13 +77,12 @@ const journey = scenic ? stationJourney(track) : undefined;
 const hf = buildHeightField(track, scenic);
 const landmarks = !styleParam ? waysides(track, hf, shared) : undefined;
 if (landmarks) scene.add(landmarks.group);
-const field = scenic ? riceField(track, hf, shared, lowSpec) : undefined;
-if (field) scene.add(field.mesh);
+const field = scenic ? riceField(track, lowSpec) : undefined;
 if (track.cedar) scene.add(brookWater(shared));
 const guide = roadGuide(track, hf);
 scene.add(guide.mesh);
-const scatter = region && region !== 'forest' ? { group: new THREE.Group(), patches: [], stats: { region } } : buildScatter(track, hf, shared, lowSpec, study, journey);
-scene.add(buildTerrain(hf, shared, scatter.patches, study, region, Boolean(track.cedar), journey?.paving, field?.bed));
+const scatter = region && region !== 'forest' ? { group: new THREE.Group(), patches: [], stats: { region } } : buildScatter(track, hf, shared, lowSpec, study, journey, field?.bed);
+scene.add(buildTerrain(hf, shared, scatter.patches, study, region, Boolean(track.cedar), journey?.paving, field));
 scene.add(buildRoad(track, shared, study, track.cedar ? hf.sdfTexture : undefined));
 scene.add(scatter.group);
 

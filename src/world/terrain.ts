@@ -1,3 +1,4 @@
+import type { RiceField } from './field';
 import { regionalGround } from './routes';
 import type { Region } from '../journey/progress';
 import * as THREE from 'three';
@@ -19,7 +20,7 @@ export function edgeDistance(x: number, z: number): number {
 
 export interface GroundPatch { x: number; z: number; radius: number }
 
-export function buildTerrain(hf: HeightField, shared: PaintShared, patches: GroundPatch[], study?: StyleStudy, region?: Region, cedar = false, paving?: (x: number, z: number) => number, riceBed?: (x: number, z: number) => number): THREE.Mesh {
+export function buildTerrain(hf: HeightField, shared: PaintShared, patches: GroundPatch[], study?: StyleStudy, region?: Region, cedar = false, paving?: (x: number, z: number) => number, field?: RiceField): THREE.Mesh {
   const n = SEGMENTS + 1;
   const step = (WORLD_HALF * 2) / SEGMENTS;
   const h = new Float32Array(n * n);
@@ -42,7 +43,7 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
     v.set(at(ix - 1, iz) - at(ix + 1, iz), 2 * step, at(ix, iz - 1) - at(ix, iz + 1)).normalize();
     nor[i * 3] = v.x; nor[i * 3 + 1] = v.y; nor[i * 3 + 2] = v.z;
     if (paving) groundPaint[2*i] = paving(pos[i*3], pos[i*3+2]);
-    if (riceBed) groundPaint[2*i+1] = riceBed(pos[i*3], pos[i*3+2]);
+    if (field) groundPaint[2*i+1] = field.bed(pos[i*3], pos[i*3+2]);
     const ring = (at(ix - K, iz) + at(ix + K, iz) + at(ix, iz - K) + at(ix, iz + K)
       + at(ix - K, iz - K) + at(ix + K, iz + K) + at(ix - K, iz + K) + at(ix + K, iz - K)) / 8;
     form[i] = Math.max(-1, Math.min(1, (h[i] - ring) / 0.55));
@@ -88,6 +89,7 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
   const mat = paintMaterial(new THREE.MeshLambertMaterial({ color: 0xffffff }), shared, {
     key: groundGrass ? 'terrain-gouache-ground-grass' : study ? `terrain-${study}` : 'terrain',
     uniforms: {
+      ...(field ? { uFieldWake: { value: field.wake } } : {}),
       uStudyStone: { value: STUDY_STONE },
       uSdf: { value: hf.sdfTexture },
       uHalfRoad: { value: ROAD_HALF_WIDTH },
@@ -192,14 +194,14 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
 
         float understoryWash = smoothstep(0.03, 0.94, vUnderstory);
         g = mix(g, cCool * 0.82, understoryWash * (0.38 + 0.09 * s2.b));
-        ${groundGrass ? `
-          float footprint = max(fwidth(p.x), fwidth(p.y));
-          g *= 1.0 + groundGrass(p, nB.r, footprint) * (1.0 - vGroundPaint.y);
-        ` : ''}
         float fieldEdge = smoothstep(0.12,0.92,vGroundPaint.y+(nC.r-0.5)*0.14);
         float lightBand = smoothstep(0.27,0.65,nA.g+0.18*dab);
         vec3 crop = mix(cMid*vec3(0.73,0.72,0.44),cDry*vec3(0.87,0.92,0.68),lightBand);
-        g = mix(g,crop,fieldEdge*0.87);
+        g = mix(g,crop,fieldEdge*0.56);
+        ${groundGrass ? `
+          float footprint = max(fwidth(p.x), fwidth(p.y));
+          g *= 1.0 + groundGrass(p, nB.r, footprint, fieldEdge);
+        ` : ''}
         // --- Road shoulder: trodden dry grass, then bare earth meeting the asphalt.
         vec2 verge = texture2D(uSdf, p / (2.0 * uWorldHalf) + 0.5).rg;
         if (verge.x < uHalfRoad + 7.0) {

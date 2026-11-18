@@ -53,7 +53,7 @@ class Batcher {
 
 export interface ScatterStats { trees: number; bushes: number; rocks: number; tufts: number; flowers: number }
 
-export function buildScatter(track: Track, hf: HeightField, shared: PaintShared, lowSpec: boolean, study?: StyleStudy, journey?: StationJourney): { group: THREE.Group; stats: ScatterStats; patches: GroundPatch[] } {
+export function buildScatter(track: Track, hf: HeightField, shared: PaintShared, lowSpec: boolean, study?: StyleStudy, journey?: StationJourney, riceBed?: (x: number, z: number) => number): { group: THREE.Group; stats: ScatterStats; patches: GroundPatch[] } {
   const group = new THREE.Group();
   group.name = 'scatter';
   const rng = new Rng(7331);
@@ -207,7 +207,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
       // under each tuft so the blades stay rooted on the sloping outcrops.
       for (const [dx, dz, size] of [[0.60, -0.65, 0.78], [0.76, -0.44, 0.60], [-0.42, 0.87, 0.68]]) {
         const foot = new THREE.Vector3(dx, 0, dz).applyMatrix4(m);
-        if (groundGrass && groundGrassCover(foot.x, foot.z) > 0.5) continue;
+        if (groundGrass && Math.max(groundGrassCover(foot.x, foot.z), riceBed?.(foot.x, foot.z) ?? 0) > 0.5) continue;
         foot.y = hf.height(foot.x, foot.z) - 0.025;
         const matrix = m.clone().scale(new THREE.Vector3(size, size, size)).setPosition(foot);
         grass.add(`tuft${vi}`, tufts[vi], matrix, new THREE.Color('#91a268'));
@@ -433,7 +433,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     p.set(px, hf.height(px, pz) - 0.02, pz);
     m.compose(p, q, s);
     const variation = rng.next();
-    if (groundGrass && variation < groundGrassCover(px, pz)) continue;
+    if (groundGrass && variation < Math.max(groundGrassCover(px, pz), riceBed?.(px, pz) ?? 0)) continue;
     const vi = Math.floor(variation * tufts.length);
     grass.add(`tuft${vi}`, tufts[vi], m, tint);
     stats.tufts++;
