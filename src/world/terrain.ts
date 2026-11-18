@@ -3,7 +3,8 @@ import { HeightField, WORLD_HALF } from './heightfield';
 import { ROAD_HALF_WIDTH } from './track';
 import { PAL, PaintShared, paintMaterial } from '../render/paint';
 
-import { STUDY_STONE } from './birchStudy';
+import { STUDY_STONE } from './paintedFlora';
+import { meadowMasks } from './meadow';
 
 const SEGMENTS = 320; // 1.25 m cells — plenty for gentle hills, light enough for mobile
 
@@ -13,7 +14,9 @@ export function edgeDistance(x: number, z: number): number {
   return Math.hypot(Math.max(qx, 0), Math.max(qz, 0)) + Math.min(Math.max(qx, qz), 0);
 }
 
-export function buildTerrain(hf: HeightField, shared: PaintShared): THREE.Mesh {
+export interface GroundPatch { x: number; z: number; radius: number }
+
+export function buildTerrain(hf: HeightField, shared: PaintShared, patches: GroundPatch[]): THREE.Mesh {
   const n = SEGMENTS + 1;
   const step = (WORLD_HALF * 2) / SEGMENTS;
   const h = new Float32Array(n * n);
@@ -38,6 +41,20 @@ export function buildTerrain(hf: HeightField, shared: PaintShared): THREE.Mesh {
       + at(ix - K, iz - K) + at(ix + K, iz + K) + at(ix - K, iz + K) + at(ix + K, iz - K)) / 8;
     form[i] = Math.max(-1, Math.min(1, (h[i] - ring) / 0.55));
   }
+  // Stain the ground vertices at planting time; the wash follows the hill and
+  // is lit by the same sun as the surrounding meadow.
+  const understory = new Float32Array(n * n);
+  for (const { x, z, radius } of patches) {
+    const cx = (x + WORLD_HALF) / step, cz = (z + WORLD_HALF) / step;
+    const cells = radius / step;
+    for (let iz = Math.max(0, Math.floor(cz - cells)); iz <= Math.min(n - 1, cz + cells); iz++) {
+      for (let ix = Math.max(0, Math.floor(cx - cells)); ix <= Math.min(n - 1, cx + cells); ix++) {
+        const d = ((ix - cx) ** 2 + (iz - cz) ** 2) / (cells * cells);
+        const i = iz * n + ix;
+        understory[i] = Math.max(understory[i], Math.max(0, 1 - d) ** 2);
+      }
+    }
+  }
   const idx = new Uint32Array(SEGMENTS * SEGMENTS * 6);
   let k = 0;
   for (let iz = 0; iz < SEGMENTS; iz++) for (let ix = 0; ix < SEGMENTS; ix++) {
@@ -49,6 +66,7 @@ export function buildTerrain(hf: HeightField, shared: PaintShared): THREE.Mesh {
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
   geo.setAttribute('aForm', new THREE.BufferAttribute(form, 1));
+  geo.setAttribute('aUnderstory', new THREE.BufferAttribute(understory, 1));
   geo.setIndex(new THREE.BufferAttribute(idx, 1));
   geo.computeBoundingSphere();
 
@@ -62,15 +80,17 @@ export function buildTerrain(hf: HeightField, shared: PaintShared): THREE.Mesh {
       cLight: C(PAL.grassLight), cMid: C(PAL.grassMid), cDeep: C(PAL.grassDeep),
       cCool: C(PAL.grassCool), cDry: C(PAL.grassDry),
     },
-    vertexPars: /* glsl */ `attribute float aForm;\nvarying float vForm;`,
-    vertexMain: /* glsl */ `vForm = aForm;`,
+    vertexPars: /* glsl */ `attribute float aForm, aUnderstory; varying float vUnderstory;\nvarying float vForm;`,
+    vertexMain: /* glsl */ `vForm = aForm; vUnderstory = aUnderstory;`,
     fragPars: /* glsl */ `
       uniform vec2 uStudyStone;
       uniform sampler2D uSdf;
       uniform float uHalfRoad;
       uniform vec3 cLight, cMid, cDeep, cCool, cDry;
       varying float vForm;
+      varying float vUnderstory;
       float gEdge;
+      ${meadowMasks}
     `,
     fragColor: /* glsl */ `
       {
@@ -95,6 +115,12 @@ export function buildTerrain(hf: HeightField, shared: PaintShared): THREE.Mesh {
         vec3 g = mix(cMid, cLight, lightP * 0.80);
         g = mix(g, cDeep, deepP * 0.74);
 
+        // Field-sized colour masses fixed to the map: a straw meadow inside
+        // the sweep, a cooler allée and a green opening between them.
+        float cutEdge = (w0.g - 0.5) * 3.5 + (s1.g - 0.3) * 0.8;
+        vec2 fields = meadowMasks(p, cutEdge);
+        g = mix(g, mix(cDry, cLight, 0.06 + 0.15*nB.r), fields.x * 0.92);
+        g = mix(g, mix(cCool, cDeep, 0.25 + 0.30*nB.g), fields.y * 0.72);
         // --- Layer 2: quiet medium variation — cool drifts and long wind-swept dry bands.
         g = mix(g, cCool, smoothstep(0.56, 0.78, nB.b) * 0.15);
         float dryBand = smoothstep(0.60, 0.80, nA.a);
@@ -114,6 +140,8 @@ export function buildTerrain(hf: HeightField, shared: PaintShared): THREE.Mesh {
         // --- Layer 5: paper tooth and dry-brush streaks (finest scale, mip-filtered).
         g *= 1.0 + (nC.b - 0.5) * 0.085 + (nC.a - 0.5) * 0.075;
 
+        float understoryWash = smoothstep(0.03, 0.94, vUnderstory);
+        g = mix(g, cCool * 0.82, understoryWash * (0.38 + 0.09 * s2.b));
         // --- Road shoulder: trodden dry grass, then bare earth meeting the asphalt.
         vec2 verge = texture2D(uSdf, p / (2.0 * uWorldHalf) + 0.5).rg;
         if (verge.x < uHalfRoad + 7.0) {

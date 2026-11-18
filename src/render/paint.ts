@@ -14,22 +14,22 @@ import { Rng } from '../core/rng';
 /** Palette — authored in sRGB, converted to linear by THREE.Color. */
 export const PAL = {
   paper: '#f4eddd',
-  grassLight: '#a8c95c',
-  grassMid: '#7fb04e',
-  grassDeep: '#5c9a4d',
-  grassCool: '#4b8c5a',
-  grassDry: '#c3c56c',
+  grassLight: '#c0cf73',
+  grassMid: '#94b659',
+  grassDeep: '#619360',
+  grassCool: '#498e7d',
+  grassDry: '#e8c26a',
   dirt: '#cbb994',
   dirtDark: '#ad9c7c',
-  asphalt: '#5f5b68',
+  asphalt: '#655f6b',
   asphaltLight: '#77727c',
   asphaltDark: '#4b4856',
   line: '#f1ead9',
   lineCentre: '#ecc057',
-  sun: '#fff0d6',
-  sky: '#a8bcf4',
-  bounce: '#8f9a5e',
-  haze: '#d3e0e4',
+  sun: '#fff0cd',
+  sky: '#b1cce2',
+  bounce: '#abb598',
+  haze: '#e3e2ca',
 };
 
 const col = (hex: string) => new THREE.Color(hex);

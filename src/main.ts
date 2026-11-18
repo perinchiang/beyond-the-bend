@@ -30,8 +30,8 @@ const scene = new THREE.Scene();
 const shared = createPaintShared(renderer, WORLD_HALF, lowSpec);
 
 // ---- light: one warm low sun, cool sky fill, a little green bounce ----
-const SUN_DIR = new THREE.Vector3(0.50, 0.60, -0.63).normalize(); // direction towards the sun
-const sun = new THREE.DirectionalLight(new THREE.Color(PAL.sun), Math.PI * 0.86);
+const SUN_DIR = new THREE.Vector3(0.50, 0.49, -0.75).normalize(); // direction towards the sun
+const sun = new THREE.DirectionalLight(new THREE.Color(PAL.sun), Math.PI * 1.12);
 sun.castShadow = true;
 const SHADOW_SIZE = lowSpec ? 1024 : 2048;
 sun.shadow.mapSize.set(SHADOW_SIZE, SHADOW_SIZE);
@@ -39,15 +39,15 @@ sun.shadow.bias = -0.0006;
 sun.shadow.normalBias = 0.06;
 sun.shadow.radius = 2.2;
 scene.add(sun, sun.target);
-const hemi = new THREE.HemisphereLight(new THREE.Color(PAL.sky), new THREE.Color(PAL.bounce), Math.PI * 0.62);
+const hemi = new THREE.HemisphereLight(new THREE.Color(PAL.sky), new THREE.Color(PAL.bounce), Math.PI * 0.68);
 scene.add(hemi);
 
 // ---- world ----
 const track = buildTrack();
 const hf = buildHeightField(track);
-scene.add(buildTerrain(hf, shared));
-scene.add(buildRoad(track, shared));
 const scatter = buildScatter(track, hf, shared, lowSpec);
+scene.add(buildTerrain(hf, shared, scatter.patches));
+scene.add(buildRoad(track, shared));
 scene.add(scatter.group);
 
 const car = new Car(hf, shared);

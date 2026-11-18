@@ -3,9 +3,9 @@ import { Rng } from '../core/rng';
 import { noise2, smoothstep } from '../core/noise';
 
 /**
- * Procedural model generators for vegetation and rocks.
+ * Procedural model generators for broadleaf trees, conifers and meadow cover.
  *
- * Canopies are NOT spheres: each one is a cluster of lobes, every lobe a dark inner core
+ * Each broadleaf canopy is a cluster of lobes, every lobe a dark inner core
  * wrapped in hundreds of small leaf "dabs" (real polygons, no alpha textures). The dabs carry
  * volume normals (pointing out of the lobe rather than out of the card), so the whole crown
  * shades as one soft painted form while its silhouette stays stippled and organic.
@@ -71,7 +71,7 @@ function leafFacing(b: Builder, rng: Rng, c: THREE.Vector3, facing: THREE.Vector
 const ICO = [new THREE.IcosahedronGeometry(1, 0), new THREE.IcosahedronGeometry(1, 1), new THREE.IcosahedronGeometry(1, 2)];
 
 /** Lumpy ellipsoid with smooth outward normals. */
-function blob(b: Builder, c: THREE.Vector3, radii: THREE.Vector3, detail: number, lump: number, seed: number, colorAt: (dir: THREE.Vector3, p: THREE.Vector3) => THREE.Color, sway = 0) {
+export function blob(b: Builder, c: THREE.Vector3, radii: THREE.Vector3, detail: number, lump: number, seed: number, colorAt: (dir: THREE.Vector3, p: THREE.Vector3) => THREE.Color, sway = 0) {
   const src = ICO[detail].getAttribute('position');
   const p = new V(), d = new V();
   for (let i = 0; i < src.count; i += 3) {
@@ -110,7 +110,6 @@ interface Lobe { c: THREE.Vector3; r: THREE.Vector3 }
 
 export interface FoliagePalette {
   core: string; low: string; high: string; glint: string; trunk: string; trunkDark: string;
-  blossom?: string;
 }
 
 export const FOLIAGE: Record<string, FoliagePalette> = {
@@ -118,14 +117,10 @@ export const FOLIAGE: Record<string, FoliagePalette> = {
   lime: { core: '#4d803d', low: '#639444', high: '#b0cc5c', glint: '#d2de74', trunk: '#7a5642', trunkDark: '#5a3e33' },
   plum: { core: '#6a3547', low: '#8a4350', high: '#c46a5a', glint: '#dc8a6a', trunk: '#6d4a3a', trunkDark: '#523a30' },
   fir: { core: '#22503f', low: '#2c634a', high: '#58945a', glint: '#7eaf62', trunk: '#5e4336', trunkDark: '#47332b' },
-  birch: { core: '#6a9442', low: '#82a946', high: '#bfd364', glint: '#d8e07a', trunk: '#ece5d5', trunkDark: '#4c4640' },
-  bush: { core: '#356a40', low: '#4a8646', high: '#8ab550', glint: '#b2cc60', trunk: '#5a3e33', trunkDark: '#5a3e33' },
-  bloom: { core: '#3c6f44', low: '#548c48', high: '#93ba54', glint: '#b6cf64', trunk: '#5a3e33', trunkDark: '#5a3e33', blossom: '#f6e9e2' },
 };
 
 function dressLobes(b: Builder, rng: Rng, lobes: Lobe[], pal: FoliagePalette, opts: { density: number; leaf: [number, number]; core: number; lump: number; swayBase: number; yMin: number; yMax: number }) {
   const core = C(pal.core), low = C(pal.low), high = C(pal.high), glint = C(pal.glint);
-  const blossom = pal.blossom ? C(pal.blossom) : null;
   const centre = new V();
   lobes.forEach((l) => centre.add(l.c));
   centre.multiplyScalar(1 / lobes.length);
@@ -165,7 +160,6 @@ function dressLobes(b: Builder, rng: Rng, lobes: Lobe[], pal: FoliagePalette, op
       if (roll < 0.12) col.lerp(glint, 0.6);
       else if (roll < 0.24) col.lerp(core, 0.45);
       if (dir.y < 0.05) col.multiplyScalar(0.84);
-      if (blossom && rng.next() < 0.2 && dir.y > 0.1) col.copy(blossom).multiplyScalar(rng.range(0.9, 1.0));
       const len = rng.range(opts.leaf[0], opts.leaf[1]) * (rng.next() < 0.14 ? 1.5 : 1);
       leafFacing(b, rng, p, facing, len, len * rng.range(0.5, 0.95), shade.clone(), col.clone(), opts.swayBase + t * 0.9);
     }
@@ -203,99 +197,6 @@ export function makeBroadleaf(seed: number, pal: FoliagePalette): THREE.BufferGe
   let yMin = Infinity, yMax = -Infinity;
   lobes.forEach((l) => { yMin = Math.min(yMin, l.c.y - l.r.y * 0.5); yMax = Math.max(yMax, l.c.y + l.r.y); });
   dressLobes(b, rng, lobes, pal, { density: 104, leaf: [0.34, 0.58], core: 0.9, lump: 0.16, swayBase: 0.25, yMin, yMax });
-  return b.build();
-}
-
-// Paint a birch bough in layered, hanging sprays. Each stroke bends from a
-// lit shoulder to a tapered tip; neighbouring strokes share a shadow mass.
-function birchBough(b: Builder, rng: Rng, lobe: Lobe, pal: FoliagePalette, sprayCount: number) {
-  const { c, r } = lobe;
-  const shade = C(pal.low).lerp(C(pal.core), 0.45);
-  const light = C(pal.high), mid = C(pal.low);
-  blob(b, c, r.clone().multiplyScalar(0.64), 0, 0.27, rng.next() * 40,
-    (dir) => shade.clone().lerp(mid, Math.max(0, dir.y)), 0.65);
-  const rotation = rng.range(0, Math.PI * 2);
-  for (let i = 0; i < sprayCount; i++) {
-    const angle = rotation + i * 2.4 + rng.range(-0.16, 0.16);
-    const axis = new V(Math.cos(angle), 0, Math.sin(angle));
-    const across = new V(-axis.z, 0, axis.x);
-    const tier = i % 3;
-    const reach = (0.67 + 0.21 * tier) * rng.range(0.88, 1.15);
-    const drop = rng.range(0.42, 0.86) + tier * 0.12;
-    const spread = rng.range(0.29, 0.43);
-    const tint = mid.clone().lerp(light, rng.range(0.22, 0.50) + (2 - tier) * 0.13);
-    let previousLeft = 0, previousRight = 0;
-    for (let row = 0; row < 4; row++) {
-      const t = row / 3;
-      const offset = 0.08 + t * reach;
-      const centre = new V(c.x + axis.x * offset * r.x, c.y, c.z + axis.z * offset * r.z);
-      centre.y += r.y * (0.84 - tier * 0.30 - t * t * drop);
-      const width = [0.16, 1.0, 0.80, 0.27][row] * spread * r.x;
-      const normal = axis.clone().multiplyScalar(0.28 + t).addScaledVector(UP, 1.0 - t * 0.86).normalize();
-      const pigment = tint.clone().lerp(shade, t * 0.56);
-      const left = b.vert(centre.clone().addScaledVector(across, width), normal, pigment, 0.7 + t * 0.55);
-      const right = b.vert(centre.clone().addScaledVector(across, -width * 0.87), normal, pigment, 0.7 + t * 0.55);
-      if (row > 0) { b.tri(previousLeft, left, previousRight); b.tri(previousRight, left, right); }
-      if (row === 2 + (i % 2)) {
-        // Short overlapping leaf marks break up the outer rim of each wash.
-        for (const side of [-1, 1]) {
-          const base = centre.clone().addScaledVector(across, side * width * 0.82);
-          const sweep = axis.clone().multiplyScalar(0.38).addScaledVector(across, side * 0.62);
-          sweep.y = -rng.range(0.44, 0.82);
-          sweep.normalize();
-          const cross = sweep.clone().cross(normal).normalize();
-          const len = r.x * rng.range(0.21, 0.36);
-          leaf(b, base, sweep, cross, len, len * 0.72, normal,
-            pigment.clone().lerp(light, rng.range(0.06, 0.22)), 0.7 + t * 0.55);
-        }
-      }
-      previousLeft = left;
-      previousRight = right;
-    }
-  }
-}
-
-export function makeBirch(seed: number, pal: FoliagePalette, sprayCount: number): THREE.BufferGeometry {
-  const rng = new Rng(seed);
-  const b = new Builder();
-  const H = rng.range(9.5, 12);
-  const bend = new V(rng.range(-0.7, 0.7), 0, rng.range(-0.7, 0.7));
-  const pale = C(pal.trunk), dark = C(pal.trunkDark);
-  const rings = [];
-  const segs = 9;
-  for (let i = 0; i <= segs; i++) {
-    const f = i / segs;
-    const c = rng.next() < 0.26 && i > 0 && i < segs ? pale.clone().lerp(dark, 0.72) : pale.clone().multiplyScalar(rng.range(0.92, 1.0));
-    rings.push({ p: new V(bend.x * f * f, -0.3 + f * (H * 0.88 + 0.3), bend.z * f * f), r: 0.21 * (1 - f * 0.72) + (i === 0 ? 0.1 : 0), c });
-  }
-  tube(b, rings, 6);
-  const lobes: Lobe[] = [];
-  // Branches sweep out from alternate sides. A broad bough carries a shelf of
-  // foliage and a narrower hanging tip, leaving windows through the white fork.
-  const azimuth = rng.range(0, 2 * Math.PI);
-  const bark = pale.clone().lerp(dark, 0.45);
-  for (let i = 0; i < 5; i++) {
-    const tier = i / 4;
-    const forkHeight = H * (0.29 + 0.45 * tier);
-    const trunkFraction = (forkHeight + 0.3) / (H * 0.88 + 0.3);
-    const fork = new V(bend.x * trunkFraction ** 2, forkHeight, bend.z * trunkFraction ** 2);
-    const angle = azimuth + i * 2.48 + rng.range(-0.28, 0.28);
-    const axis = new V(Math.cos(angle), 0, Math.sin(angle));
-    const reach = rng.range(1.8, 2.5) * (1 - tier * 0.52);
-    const joint = fork.clone().addScaledVector(axis, reach * 0.48);
-    joint.y += 0.85;
-    const tip = fork.clone().addScaledVector(axis, reach);
-    tip.y += H * rng.range(0.17, 0.22);
-    tube(b, [{ p: fork, r: 0.105 - tier * 0.04, c: bark },
-      { p: joint, r: 0.065, c: bark }, { p: tip, r: 0.035, c: dark }], 5);
-    const width = rng.range(1.2, 1.55) * (1 - tier * 0.18);
-    lobes.push({ c: tip, r: new V(width * 1.16, width * 0.78, width) });
-    const fringe = tip.clone().addScaledVector(axis, width * 0.75);
-    fringe.y -= width * 0.52;
-    lobes.push({ c: fringe, r: new V(width * 0.58, width * 0.76, width * 0.61) });
-  }
-  lobes.push({ c: new V(bend.x, H * 0.9, bend.z), r: new V(1.08, 1.37, 0.97) });
-  for (const lobe of lobes) birchBough(b, rng, lobe, pal, sprayCount);
   return b.build();
 }
 
@@ -358,80 +259,26 @@ export function makeConifer(seed: number, pal: FoliagePalette): THREE.BufferGeom
   return b.build();
 }
 
-export function makeBush(seed: number, pal: FoliagePalette): THREE.BufferGeometry {
-  const rng = new Rng(seed);
-  const b = new Builder();
-  const lobes: Lobe[] = [];
-  const count = rng.int(2, 4);
-  for (let i = 0; i < count; i++) {
-    const r = rng.range(0.55, 1.0), a = rng.range(0, 6.28), d = i === 0 ? 0 : rng.range(0.5, 1.0);
-    lobes.push({ c: new V(Math.cos(a) * d, r * 0.5, Math.sin(a) * d), r: new V(r, r * 0.78, r) });
-  }
-  let yMax = 0;
-  lobes.forEach((l) => (yMax = Math.max(yMax, l.c.y + l.r.y)));
-  dressLobes(b, rng, lobes, pal, { density: 150, leaf: [0.22, 0.36], core: 0.88, lump: 0.18, swayBase: 0.25, yMin: 0, yMax });
-  return b.build();
-}
-
-export function makeRock(seed: number): THREE.BufferGeometry {
-  const rng = new Rng(seed);
-  const b = new Builder();
-  const light = C('#c3bcae'), mid = C('#9d968d'), dark = C('#6f6b73'), moss = C('#7e9a55');
-  const src = ICO[1].getAttribute('position');
-  const pieces = rng.int(1, 3);
-  const a = new V(), bb = new V(), c = new V(), fn = new V(), d = new V(), nn = new V();
-  const col = new THREE.Color();
-  for (let pi = 0; pi < pieces; pi++) {
-    const size = pi === 0 ? rng.range(0.7, 1.15) : rng.range(0.3, 0.55);
-    const ang = rng.range(0, 6.28), dist = pi === 0 ? 0 : rng.range(0.8, 1.3);
-    const centre = new V(Math.cos(ang) * dist, size * 0.28, Math.sin(ang) * dist);
-    const radii = new V(size * rng.range(0.85, 1.25), size * rng.range(0.55, 0.8), size * rng.range(0.8, 1.1));
-    const sd = seed * 1.31 + pi * 5.7;
-    const disp = (dir: THREE.Vector3, out: THREE.Vector3) => {
-      const f = 1 + 0.26 * noise2(dir.x * 1.6 + sd, dir.z * 1.6 + dir.y * 1.1 - sd, 3) + 0.1 * noise2(dir.x * 4.1 - sd, dir.y * 4.1 + dir.z * 2.0, 5);
-      out.copy(dir).multiply(radii).multiplyScalar(f);
-      out.y = Math.max(out.y, -size * 0.25); // sit flat in the ground
-      return out.add(centre);
-    };
-    for (let i = 0; i < src.count; i += 3) {
-      disp(d.fromBufferAttribute(src, i).normalize(), a);
-      disp(d.fromBufferAttribute(src, i + 1).normalize(), bb);
-      disp(d.fromBufferAttribute(src, i + 2).normalize(), c);
-      fn.copy(bb).sub(a).cross(nn.copy(c).sub(a)).normalize();
-      const jit = rng.range(-0.05, 0.05);
-      const ids: number[] = [];
-      [a, bb, c].forEach((p, k) => {
-        d.fromBufferAttribute(src, i + k).normalize();
-        nn.copy(fn).multiplyScalar(0.72).addScaledVector(d, 0.28).normalize(); // softened facets
-        const up = smoothstep(-0.25, 0.8, fn.y);
-        col.copy(dark).lerp(mid, smoothstep(0.0, 0.5, up)).lerp(light, smoothstep(0.55, 1.0, up));
-        col.offsetHSL(0, 0, jit);
-        const m = smoothstep(0.62, 0.9, fn.y) * smoothstep(-0.1, 0.4, noise2(p.x * 1.4 + sd, p.z * 1.4, 9));
-        col.lerp(moss, m * 0.6);
-        ids.push(b.vert(p, nn, col, 0));
-      });
-      b.tri(ids[0], ids[1], ids[2]);
-    }
-  }
-  return b.build();
-}
-
-/** A small clump of grass blades. Vertex colours are neutral; the instance colour tints it. */
+/** Low bent strokes that share a prevailing lean. The wider belly catches light
+ * just above the soil, leaving a finer tip against the ground behind it. */
 export function makeTuft(seed: number): THREE.BufferGeometry {
-  const rng = new Rng(seed);
-  const b = new Builder();
-  const blades = 9;
-  const base = new THREE.Color(0.62, 0.66, 0.62), tip = new THREE.Color(1.12, 1.12, 1.0);
-  const p = new V(), n = new V();
-  for (let i = 0; i < blades; i++) {
-    const a = rng.range(0, 6.28), r = rng.range(0.0, 0.24), h = rng.range(0.28, 0.6), w = rng.range(0.04, 0.07);
-    const bx = Math.cos(a) * r, bz = Math.sin(a) * r;
-    const wa = rng.range(0, 6.28), lx = Math.cos(a) * h * rng.range(0.25, 0.6), lz = Math.sin(a) * h * rng.range(0.25, 0.6);
-    n.set(Math.cos(a) * 0.25, 1, Math.sin(a) * 0.25).normalize();
-    const i0 = b.vert(p.set(bx + Math.cos(wa) * w, 0, bz + Math.sin(wa) * w), n, base, 0);
-    const i1 = b.vert(p.set(bx - Math.cos(wa) * w, 0, bz - Math.sin(wa) * w), n, base, 0);
-    const i2 = b.vert(p.set(bx + lx, h, bz + lz), n, tip, 1.6);
-    b.tri(i0, i1, i2);
+  const rng = new Rng(seed), b = new Builder();
+  const root = new THREE.Color(0.80, 0.84, 0.78), body = new THREE.Color(1, 1, 0.93);
+  const tip = new THREE.Color(1.12, 1.1, 0.96);
+  for (let i = 0; i < 6; i++) {
+    const a = rng.range(-0.85, 0.85), h = rng.range(0.13, 0.38);
+    const run = new V(Math.cos(a), 0, Math.sin(a)).multiplyScalar(h * rng.range(0.8, 1.45));
+    const side = new V(-Math.sin(a), 0, Math.cos(a)).multiplyScalar(rng.range(0.023, 0.043));
+    const foot = new V(rng.range(-0.27, 0.27), 0, rng.range(-0.14, 0.14));
+    const joint = foot.clone().addScaledVector(run, 0.39); joint.y = h * 0.72;
+    const end = foot.clone().add(run); end.y = h;
+    const n = new V(0.08, 1, 0.18).normalize();
+    const k = b.vert(foot.clone().sub(side), n, root, 0);
+    b.vert(foot.clone().add(side), n, root, 0);
+    b.vert(joint.clone().addScaledVector(side, 0.66), n, body, 0.36);
+    b.vert(joint.clone().addScaledVector(side, -0.66), n, body, 0.36);
+    b.vert(end, n, tip, 0.67);
+    b.tri(k, k+1, k+2); b.tri(k, k+2, k+3); b.tri(k+3, k+2, k+4);
   }
   return b.build();
 }

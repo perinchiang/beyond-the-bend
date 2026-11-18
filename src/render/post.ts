@@ -85,9 +85,8 @@ export class PostFX {
 
           vec3 s = toSRGB(c);
           float l = dot(s, vec3(0.299, 0.587, 0.114));
-          s = mix(vec3(l), s, 1.06);                                   // a touch more chroma
           s = mix(s, s * s * (3.0 - 2.0 * s), 0.15);                   // gentle contrast
-          s = mix(s, vec3(0.22, 0.22, 0.40), (1.0 - smoothstep(0.0, 0.36, l)) * 0.14); // shadows lean violet
+          s = mix(s, vec3(0.20, 0.28, 0.36), (1.0 - smoothstep(0.0, 0.42, l)) * 0.22); // cool blue-grey shade
           s = mix(s, s * vec3(1.03, 1.0, 0.94), smoothstep(0.55, 0.95, l) * 0.6);      // highlights lean warm
           vec2 v = (vUv - 0.5) * vec2(1.0, 0.86);
           float vig = smoothstep(0.42, 0.98, length(v) * 1.35);
