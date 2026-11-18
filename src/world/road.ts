@@ -116,6 +116,8 @@ export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy)
         float edgeLine = 1.0 - smoothstep(0.075 - aw, 0.075 + aw, abs(d - (uHalfRoad - 0.44)));
         ${track.lane ? `if (vRoad.x > 0.0 && (abs(s - ${(track.lane.from * vScale).toFixed(2)}) < 8.0 ||
           abs(s - ${(track.lane.to * vScale).toFixed(2)}) < 8.0)) edgeLine = 0.0;` : ''}
+        ${track.cedar ? `if (vRoad.x < 0.0 && (abs(s - ${(track.cedar.from * vScale).toFixed(2)}) < 10.5 ||
+          abs(s - ${(track.cedar.to * vScale).toFixed(2)}) < 10.5)) edgeLine = 0.0;` : ''}
         a = mix(a, cLine, edgeLine * mix(0.42, 0.94, wear));
         float ds = fract(s / uDash) * uDash;
         float al = fwidth(s) * 1.1 + 0.004;

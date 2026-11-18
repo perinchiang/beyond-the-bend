@@ -1,4 +1,5 @@
 import { regions, titles } from '../journey/progress';
+import { MILL_X, MILL_Z } from '../world/cedar';
 import type { Track } from '../world/track';
 import { STATION_S, TOWN_EXIT_S } from '../world/station';
 import './drivingHud.css';
@@ -18,9 +19,17 @@ export function createDrivingHud(track: Track, scenic: boolean, teleport: (s: nu
     .map(t => t.x.toFixed(1) + ',' + t.z.toFixed(1)).join(' L');
   document.getElementById('map-road')!.setAttribute('d', 'M' + line + ' Z');
   if (track.lane) {
-    document.getElementById('map-lane')!.setAttribute('d', 'M' + track.lane.points
-      .filter((_, i, points) => i % 4 === 0 || i === points.length - 1)
-      .map(p => p.x.toFixed(1) + ',' + p.z.toFixed(1)).join(' L'));
+    const lanes = [track.lane, track.cedar].flatMap(lane => {
+      if (!lane) return [];
+      const points = lane.points.filter((_, i, path) => i % 4 === 0 || i === path.length - 1);
+      return ['M' + points.map(p => p.x.toFixed(1) + ',' + p.z.toFixed(1)).join(' L')];
+    });
+    document.getElementById('map-lane')!.setAttribute('d', lanes.join(' '));
+    if (track.cedar) {
+      const mill = document.getElementById('mill-pin')!;
+      mill.setAttribute('transform', 'translate(' + MILL_X + ' ' + MILL_Z + ')');
+      mill.setAttribute('visibility', 'visible');
+    }
   }
   if (scenic) {
     const station = track.at(STATION_S);
@@ -36,7 +45,7 @@ export function createDrivingHud(track: Track, scenic: boolean, teleport: (s: nu
   });
 
   document.getElementById('build-id')!.textContent = 'Build ' + import.meta.env.VITE_BUILD_ID;
-  const stops: Record<string, number> = { town: TOWN_EXIT_S, fork: 100, bend: 227, station: STATION_S, circuit: 0 };
+  const stops: Record<string, number> = { town: TOWN_EXIT_S, fork: 100, bend: 227, station: STATION_S, circuit: 0, forest: track.cedar ? track.length + 8 : 0 };
   for (const region of regions) travel.add(new Option(titles[region], region));
   travel.addEventListener('change', () => {
     const key = travel.value;
@@ -50,9 +59,11 @@ export function createDrivingHud(track: Track, scenic: boolean, teleport: (s: nu
     }
     const url = new URL(location.href);
     for (const p of ['study', 'cam', 'x', 'z']) url.searchParams.delete(p);
-    if (nextScenic) url.searchParams.delete('route');
+    if (key === 'forest') url.searchParams.set('route', 'forest');
+    else if (nextScenic) url.searchParams.delete('route');
     else url.searchParams.set('route', key);
     url.searchParams.set('s', String(stops[key] ?? 0));
+    if (key === 'forest') url.searchParams.delete('s');
     location.assign(url.href);
   });
 

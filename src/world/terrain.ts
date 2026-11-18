@@ -19,7 +19,7 @@ export function edgeDistance(x: number, z: number): number {
 
 export interface GroundPatch { x: number; z: number; radius: number }
 
-export function buildTerrain(hf: HeightField, shared: PaintShared, patches: GroundPatch[], study?: StyleStudy, region?: Region): THREE.Mesh {
+export function buildTerrain(hf: HeightField, shared: PaintShared, patches: GroundPatch[], study?: StyleStudy, region?: Region, cedar = false): THREE.Mesh {
   const n = SEGMENTS + 1;
   const step = (WORLD_HALF * 2) / SEGMENTS;
   const h = new Float32Array(n * n);
@@ -196,6 +196,19 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
           g = mix(dirtColor(p), g, turf);
         }
 
+        ${cedar ? `
+        float laneDist = texture2D(uSdf,p/(2.0*uWorldHalf)+0.5).b - 0.45;
+        float dirtLane = 1.0 - smoothstep(2.65,3.65,laneDist + (nC.g - 0.5)*0.48);
+        float grooves = 1.0-smoothstep(0.10,0.50,abs(laneDist-1.02+(nB.g-0.5)*0.43));
+        vec3 clay = mix(dirtColor(p)*vec3(0.88,0.79,0.69),cDry,0.10);
+        clay = mix(clay,clay*0.72,grooves*(0.54+0.36*nC.g));
+        float crown = (1.0-smoothstep(0.12,0.82,laneDist))*smoothstep(0.30,0.68,nB.r);
+        clay = mix(clay,cMid*0.80,crown*0.46);
+        g = mix(g,clay,dirtLane*0.93);
+        vec2 yard = (p-vec2(-43.0,1.0))/vec2(13.5,12.0);
+        float apron = 1.0-smoothstep(0.66,1.2,length(yard)+(nC.r-0.5)*0.16);
+        g = mix(g,dirtColor(p)*mix(0.88,1.04,dab),apron*0.94);
+        ` : ''}
         // A few long pigment washes settle the study stone into the turf.
         vec2 foot = p - uStudyStone;
         if (abs(foot.x) < 4.8 && abs(foot.y) < 3.2) {

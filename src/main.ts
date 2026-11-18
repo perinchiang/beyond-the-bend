@@ -2,10 +2,11 @@ import { roadGuide } from './journey/navigation';
 import { journeyDrive } from './journey/drive';
 import { regions } from './journey/progress';
 import { riceField } from './world/field';
+import { brookWater } from './world/millBrook';
 import { waysides } from './world/waysides';
 import * as THREE from 'three';
 import { stationJourney, TOWN_EXIT_S } from './world/station';
-import { buildTrack } from './world/track';
+import { buildTrack, roadPoint } from './world/track';
 import { buildHeightField } from './world/heightfield';
 import { WORLD_HALF } from './world/heightfield';
 import { buildTerrain } from './world/terrain';
@@ -68,7 +69,7 @@ const hemi = new THREE.HemisphereLight(new THREE.Color(PAL.sky), new THREE.Color
 scene.add(hemi);
 
 // ---- world ----
-const region = !styleParam ? regions.find(id => id === params.get('route')) : undefined;
+const region = !styleParam ? regions.find(id => id !== 'forest' && id === params.get('route')) : undefined;
 const scenic = !styleParam && !region && params.get('route') !== 'circuit';
 const track = buildTrack(region ?? (scenic ? 'foothill' : 'circuit'));
 document.body.classList.toggle('arcade', region === 'arcade');
@@ -78,10 +79,11 @@ const landmarks = !styleParam ? waysides(track, hf, shared) : undefined;
 if (landmarks) scene.add(landmarks.group);
 const field = scenic ? riceField(track, hf, shared, lowSpec) : undefined;
 if (field) scene.add(field.mesh);
+if (track.cedar) scene.add(brookWater(shared));
 const guide = roadGuide(track, hf);
 scene.add(guide.mesh);
 const scatter = region && region !== 'forest' ? { group: new THREE.Group(), patches: [], stats: { region } } : buildScatter(track, hf, shared, lowSpec, study, journey);
-scene.add(buildTerrain(hf, shared, scatter.patches, study, region));
+scene.add(buildTerrain(hf, shared, scatter.patches, study, region, Boolean(track.cedar)));
 scene.add(buildRoad(track, shared, study));
 scene.add(scatter.group);
 
@@ -95,9 +97,9 @@ renderer.info.autoReset = false;
 post.setTilt(num('tilt', lowSpec ? 0 : 1));
 
 // ---- start pose ----
-const startS = num('s', region ? 0 : scenic ? TOWN_EXIT_S : previewStudy ? 470 : styleParam ? 232 : 0);
+const startS = params.get('route') === 'forest' && track.cedar ? track.length + 8 : num('s', region ? 0 : scenic ? TOWN_EXIT_S : previewStudy ? 470 : styleParam ? 232 : 0);
 function placeAt(s: number) {
-  const t = track.at(s);
+  const t = roadPoint(track, s);
   car.place(t.x - t.tz * -1.65, t.z + t.tx * -1.65, Math.atan2(t.tx, t.tz));
 }
 placeAt(startS);
@@ -337,7 +339,7 @@ car.load(canvas.dataset.model ?? import.meta.env.BASE_URL + 'models/car.glb').ca
     },
     /** Pose the scene for a capture. Free camera by default; `mode: 'drive'` uses a driving preset. */
     view(o: { s?: number; x?: number; y?: number; z?: number; yaw?: number; pitch?: number; zoom?: number; lane?: number; time?: number; mode?: 'drive' | 'free'; preset?: number }) {
-      if (o.s !== undefined) { const t = track.at(o.s); const l = o.lane ?? -1.65; car.place(t.x - t.tz * l, t.z + t.tx * l, Math.atan2(t.tx, t.tz)); }
+      if (o.s !== undefined) { const t = roadPoint(track, o.s); const l = o.lane ?? -1.65; car.place(t.x - t.tz * l, t.z + t.tx * l, Math.atan2(t.tx, t.tz)); }
       if (o.mode === 'drive') rig.setDrive(o.preset ?? DEFAULT_PRESET);
       else rig.setFree(o.yaw ?? 38, o.pitch ?? 47, o.zoom ?? 46, o.x !== undefined && o.z !== undefined ? new THREE.Vector3(o.x, o.y ?? hf.height(o.x, o.z), o.z) : undefined);
       if (o.time !== undefined) fixedTime = o.time;

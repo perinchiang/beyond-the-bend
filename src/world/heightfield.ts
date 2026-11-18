@@ -1,3 +1,4 @@
+import { bridgeSurface, brookBed } from './millBrook';
 import * as THREE from 'three';
 import { fbm2, noise2, smoothstep, mix } from '../core/noise';
 import { extraWidth, ROAD_HALF_WIDTH, Track } from './track';
@@ -39,12 +40,17 @@ export interface HeightField {
 }
 
 export function buildHeightField(track: Track, foothills = false): HeightField {
-  const land = foothills
+  const countryside = foothills
     ? (x: number, z: number) => naturalHeight(x, z) +
       18 * Math.exp(-(((x - 131) / 44) ** 2 + ((z + 91) / 32) ** 2))
     : (x: number, z: number) => naturalHeight(x, z) + (track.region === 'snow'
       ? 28 * Math.exp(-((x / 105) ** 2 + ((z + 28) / 64) ** 2))
       : track.region === 'volcano' ? 22 * Math.exp(-(((x - 1) / 48) ** 2 + (z / 55) ** 2)) : 0);
+  const yardLevel = countryside(-44,1);
+  const land = track.cedar ? (x:number,z:number) => {
+    const pad = ((x+44)/13)**2 + ((z-1)/12)**2;
+    return mix(yardLevel, countryside(x,z), smoothstep(0.58,1.8,pad));
+  } : countryside;
   const { samples } = track;
   const n = samples.length;
 
@@ -107,24 +113,36 @@ export function buildHeightField(track: Track, foothills = false): HeightField {
     return mix(mix(arr[i], arr[i + 1], tx), mix(arr[i + FIELD_N], arr[i + FIELD_N + 1], tx), tz);
   };
 
-  // The unpaved lane follows the existing ground, including the asphalt shoulders
-  // at its mouths. Only its paint, planting clearance and wheel grip need a mask.
+  // Both dirt roads feed planting and tyre grip. The sawmill road also cuts a
+  // shallow bench across the hillside. Asphalt has priority at both junctions.
   const roads = track.lane ? dist.slice() : dist;
-  for (const p of track.lane?.points ?? []) {
+  const forestDist = track.cedar ? new Float32Array(dist.length).fill(FIELD_MAX) : undefined;
+  const forestHeight = track.cedar ? new Float32Array(dist.length) : undefined;
+  for (const lane of [track.lane, track.cedar]) for (const p of lane?.points ?? []) {
+    const forest = lane === track.cedar;
+    const level = forest ? land(p.x,p.z) : 0;
     const cx = Math.floor((p.x + WORLD_HALF) / FIELD_RES), cz = Math.floor((p.z + WORLD_HALF) / FIELD_RES);
     for (let iz = Math.max(0, cz - R); iz <= Math.min(FIELD_N - 1, cz + R); iz++) {
       for (let ix = Math.max(0, cx - R); ix <= Math.min(FIELD_N - 1, cx + R); ix++) {
         const d = Math.hypot((ix + 0.5) * FIELD_RES - WORLD_HALF - p.x,
           (iz + 0.5) * FIELD_RES - WORLD_HALF - p.z) + 0.45;
         const i = iz * FIELD_N + ix;
+        if (forest && forestDist && forestHeight && d < forestDist[i]) {
+          forestDist[i] = d;
+          forestHeight[i] = level;
+        }
         if (d < roads[i]) { roads[i] = d; width[i] = 0.28; }
       }
     }
   }
   const roadDist = (x: number, z: number) => sample(roads, x, z);
 
-  const height = (x: number, z: number): number => {
-    const nat = land(x, z);
+  const gradedHeight = (x: number, z: number): number => {
+    let nat = land(x, z);
+    if (forestDist && forestHeight) {
+      const bank = sample(forestDist,x,z);
+      if (bank < 11) nat = mix(sample(forestHeight,x,z), nat, smoothstep(2.9,11,bank));
+    }
     const d = sample(dist, x, z);
     if (d >= ROAD_HALF_WIDTH + VERGE + BLEND) return nat;
     const w = 1 - smoothstep(ROAD_HALF_WIDTH + VERGE, ROAD_HALF_WIDTH + VERGE + BLEND, d);
@@ -132,7 +150,10 @@ export function buildHeightField(track: Track, foothills = false): HeightField {
     return mix(nat, sample(rh, x, z) - 0.09, w);
   };
 
+  const deckLevel = gradedHeight(2.67,-57.24) + 0.045;
+  const height = track.cedar ? (x:number,z:number) => brookBed(x,z,gradedHeight(x,z)) : gradedHeight;
   const surface = (x: number, z: number): number => {
+    if (track.cedar && bridgeSurface(x,z)) return Math.max(deckLevel, height(x,z));
     const d = sample(dist, x, z);
     const h = height(x, z);
     if (d > ROAD_HALF_WIDTH + 1.2) return h;
@@ -145,12 +166,14 @@ export function buildHeightField(track: Track, foothills = false): HeightField {
     return out.set(height(x - e, z) - height(x + e, z), 2 * e, height(x, z - e) - height(x, z + e)).normalize();
   };
 
-  const half = new Uint16Array(dist.length * 2);
+  const channels = forestDist ? 4 : 2;
+  const half = new Uint16Array(dist.length * channels);
   for (let i = 0; i < dist.length; i++) {
-    half[2 * i] = THREE.DataUtils.toHalfFloat(roads[i]);
-    half[2 * i + 1] = THREE.DataUtils.toHalfFloat(width[i]);
+    half[channels * i] = THREE.DataUtils.toHalfFloat(roads[i]);
+    half[channels * i + 1] = THREE.DataUtils.toHalfFloat(width[i]);
+    if (forestDist) half[channels * i + 2] = THREE.DataUtils.toHalfFloat(forestDist[i]);
   }
-  const sdfTexture = new THREE.DataTexture(half, FIELD_N, FIELD_N, THREE.RGFormat, THREE.HalfFloatType);
+  const sdfTexture = new THREE.DataTexture(half, FIELD_N, FIELD_N, forestDist ? THREE.RGBAFormat : THREE.RGFormat, THREE.HalfFloatType);
   sdfTexture.minFilter = sdfTexture.magFilter = THREE.LinearFilter;
   sdfTexture.wrapS = sdfTexture.wrapT = THREE.ClampToEdgeWrapping;
   sdfTexture.needsUpdate = true;

@@ -39,20 +39,25 @@ try {
   await saveMatches({ job: 'parcel' });
   // The same bend on the unpaved lane should suggest different inputs at different speeds.
   async function atBend(speed) {
-    return page.evaluate(async speed => {
+    return page.evaluate(async (speed) => {
       const { car, track, scene } = window.__btb;
       const lane = track.lane.points;
       const start = Math.floor(lane.length * 0.45);
-      car.place(lane[start].x, lane[start].z, Math.atan2(lane[start+1].x-lane[start].x,lane[start+1].z-lane[start].z));
+      car.place(
+        lane[start].x,
+        lane[start].z,
+        Math.atan2(lane[start + 1].x - lane[start].x, lane[start + 1].z - lane[start].z),
+      );
       car.speed = speed;
-      await new Promise(resolve => setTimeout(resolve, 180));
+      await new Promise((resolve) => setTimeout(resolve, 180));
       const guide = scene.getObjectByName('road-guide');
       const colors = guide.instanceColor.array;
-      return Array.from({length:guide.count}, (_,i) => colors[3*i] > colors[3*i+2]);
+      return Array.from({ length: guide.count }, (_, i) => colors[3 * i] > colors[3 * i + 2]);
     }, speed);
   }
-  const slow = await atBend(2), fast = await atBend(27);
-  assert.ok(slow.length && slow.every(warm=>!warm), 'blue on the slow field bend');
+  const slow = await atBend(2),
+    fast = await atBend(27);
+  assert.ok(slow.length && slow.every((warm) => !warm), 'blue on the slow field bend');
   assert.ok(fast.some(Boolean), 'braking guidance on the same fast bend');
   await go(335);
   await act('Deliver parcel');
@@ -78,9 +83,47 @@ try {
     await go(s);
     await saveMatches({ rice: i + 1 });
   }
-  await changeMap('Enter Cedar Pass', 'forest');
+  const villageUrl = page.url();
+  // Hold the same renderer and car through both junctions. Sample sawmill discovery
+  // between the two driving legs, just as the frame loop does on a normal drive.
+  for (const [from, until] of [
+    [0, 130],
+    [130, null],
+  ]) {
+    const offset = await page.evaluate(
+      ([from, limit]) => {
+        const { car, track, hf } = window.__btb;
+        const lane = track.cedar,
+          points = lane.points,
+          spacing = lane.length / (points.length - 1);
+        const end = limit !== null ? Math.round(limit / spacing) : points.length - 2;
+        let i = Math.floor(from / spacing),
+          worst = 0,
+          steps = 0;
+        for (; i < end && steps++ < 9000; ) {
+          const p = points[i + 1],
+            q = points[Math.min(points.length - 1, i + 11)];
+          if (Math.hypot(p.x - car.x, p.z - car.z) < 2.8) i++;
+          const angle = Math.atan2(q.x - car.x, q.z - car.z) - car.heading;
+          car.update(1 / 60, {
+            throttle: car.speed < 9 ? 0.75 : 0.25,
+            steer: Math.max(-1, Math.min(1, 2.4 * Math.atan2(Math.sin(angle), Math.cos(angle)))),
+            brake: false,
+          });
+          worst = Math.max(worst, hf.roadDist(car.x, car.z));
+        }
+        car.speed = 0;
+        if (i < end) throw new Error('Could not drive through forest');
+        return worst;
+      },
+      [from, until],
+    );
+    assert.ok(offset < 3.3, 'forest road offset ' + offset);
+    if (from === 0) await saveMatches({ sawmill: true });
+    assert.equal(page.url(), villageUrl);
+  }
+  await changeMap('Enter Snowbell Ridge', 'snow');
   const passes = [
-    ['Enter Snowbell Ridge', 'snow'],
     ['Enter Glacier Shelf', 'glacier'],
     ['Enter Ember Caldera', 'volcano'],
     ['Enter Market Town', 'market'],

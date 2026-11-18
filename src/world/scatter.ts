@@ -1,3 +1,5 @@
+import { drawMillBridge, wetBank, shorePoint } from './millBrook';
+import { drawSawyard, millClearing } from './cedar';
 import * as THREE from 'three';
 import type { StyleStudy } from '../render/styleStudy';
 import { Rng } from '../core/rng';
@@ -167,6 +169,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   const stats: ScatterStats = { trees: 0, bushes: 0, rocks: 0, tufts: 0, flowers: 0 };
 
   const free = (x: number, z: number, r: number) => {
+    if (track.cedar && (millClearing(x,z) || wetBank(x,z))) return false;
     if (journey?.keepClear(x, z)) return false;
     for (const o of placed) if ((o.x - x) ** 2 + (o.z - z) ** 2 < (o.r + r) ** 2) return false;
     return true;
@@ -279,6 +282,28 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     tree('lime', x, z, scale, 3.2, 7.5, 1);
   }
 
+  if (track.cedar) {
+    // Plant stands along changes in the terrain. Leave the inside of the mill bend
+    // open; the chimney is visible across the apron before the road turns away.
+    const stands: [number, number, number, number, Species[]][] = [
+      [48, 40, 11, 7, ['birch','lime']], [18, 38, 10, 6, ['oak','birch']],
+      [8, 5, 12, 14, ['fir','fir','lime']], [-8, 30, 13, 12, ['fir','oak']],
+      [-52, -17, 11, 10, ['fir','fir','birch']], [-17,-18,10,9,['lime','oak']],
+      [-47,-44,13,17,['fir','fir','birch']], [-5,-34,12,12,['fir','oak']],
+      [-40,-150,14,12,['fir','lime']], [-4,-149,12,13,['fir','oak']],
+      [26,-145,11,8,['birch','fir']], [17,-95,11,9,['birch','lime']], [38,-86,13,10,['fir','birch']],
+    ];
+    const plant = new Rng(451);
+    for (const [x,z,r,count,mix] of stands) {
+      for(let i=0; i<count*2; i++) {
+        const a=plant.range(0,Math.PI*2), d=r*Math.sqrt(plant.next());
+        tree(plant.pick(mix),x+Math.cos(a)*d,z+Math.sin(a)*d,plant.range(0.80,1.23),2.45,4.4);
+      }
+    }
+    for (const [x,z,scale] of [[18,29,1.55],[19,31,1.08],[-20,-9,2.1],[-18,-11,1.5],
+      [-17,-12,0.77],[35,-83,2.35],[36,-81,1.6],[36,-80,0.9]]) rock(x,z,scale);
+  }
+
   // Authored groves: [x, z, radius, count, species mix]
   const groves: [number, number, number, number, Species[]][] = [
     [34, 44, 34, 20, ['oak', 'oak', 'lime', 'plum']], // on the landmark hill
@@ -346,6 +371,26 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     if (rng.next() < 0.4) bush(x + rng.range(-1.6, 1.6), z + rng.range(-1.6, 1.6), rng.range(0.55, 0.9));
   });
 
+  if (track.cedar) {
+    const rushes = new Rng(318);
+    for (const [u, side, count] of [[-18,1,22],[-10,-1,12],[-6,1,8],[8,-1,18],[15,1,26]]) {
+      const foot = shorePoint(u,side*1.10);
+      patches.push({ ...foot, radius: 3.1 });
+      for (let i=0;i<count;i++) {
+        const toe=shorePoint(u+rushes.range(-2.4,2.4),side*rushes.range(0.82,1.47));
+        const size=rushes.range(1.1,2.0);
+        e.set(0,rushes.range(-0.8,0.6),0);
+        m.compose(p.set(toe.x,hf.height(toe.x,toe.z)-0.05,toe.z),
+          q.setFromEuler(e),s.set(size,size*1.45,size));
+        grass.add('brookRush'+i%3,tufts[i%3],m,tint.set('#97a877'));
+      }
+    }
+    for (const [u,side,scale] of [[-8.5,1,1.2],[-9.6,0.9,0.7],[6.5,-1,1.4],[7.9,-1,0.75],[17,1,1.65]]) {
+      const toe=shorePoint(u,side*1.16);
+      put(rocks,'rock',toe.x,toe.z,scale,0.16,0.12*scale);
+    }
+  }
+
   // ---------- 4. rocks: outcrops on crests, plus a few beside the road ----------
   for (let i = 0; i < 46; i++) {
     const x = rng.range(-165, 165), z = rng.range(-165, 165);
@@ -370,6 +415,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     const drift = fbm2(px / 34 + 1.7, pz / 34 - 9.1, 3, 555);
     const fine = noise2(px / 7.5, pz / 7.5, 91);
     if (drift + fine * 0.3 < 0.02 + rng.next() * 0.16) continue; // tufts gather in drifts, leaving calm open paint
+    if (track.cedar && (millClearing(px,pz) || wetBank(px,pz))) continue;
     const d = hf.roadDist(px, pz);
     const bank = d - HW - hf.vergeWidth(px, pz);
     if (bank < 0.38 || edgeDistance(px, pz) > -12) continue;
@@ -402,6 +448,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     const main = rng.pick(flowerCols), rad = rng.range(1.8, 6), count = rng.int(10, 42);
     for (let j = 0; j < count; j++) {
       const px = cx + rng.gauss() * rad, pz = cz + rng.gauss() * rad;
+      if (track.cedar && (millClearing(px,pz) || wetBank(px,pz))) continue;
       if (hf.roadDist(px, pz) < HW + hf.vergeWidth(px, pz) + 0.7 || edgeDistance(px, pz) > -12) continue;
       tint.copy(rng.next() < 0.82 ? main : rng.pick(flowerCols)).multiplyScalar(rng.range(0.92, 1.0));
       const sc = rng.range(0.09, 0.17);
@@ -507,6 +554,10 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     fence(43, 71, 1);
     fence(80, 113, -1);
     journey.draw(props, hf);
+    if (track.cedar) {
+      drawSawyard(props,hf,track);
+      drawMillBridge(props,hf.surface(2.67,-57.24));
+    }
   } else {
     fence(nearestS(128, 98), nearestS(150, 10), 1);
     fence(nearestS(-70, 112) - 6, nearestS(-70, 112) + 70, -1);

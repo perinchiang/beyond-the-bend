@@ -46,6 +46,7 @@ export interface FieldLane {
   from: number;
   to: number;
   points: THREE.Vector3[];
+  length: number;
 }
 
 export function extraWidth(track: Track, s: number) {
@@ -56,6 +57,7 @@ export function extraWidth(track: Track, s: number) {
 export interface Track {
   region?: Region;
   lane?: FieldLane;
+  cedar?: FieldLane;
   samples: TrackSample[];
   length: number;
   /** Sample by arc length with wrap-around and linear interpolation. */
@@ -103,7 +105,27 @@ export function buildTrack(route: 'circuit' | 'foothill' | Region = 'circuit'): 
     const a = at(from), b = at(to);
     const path = new THREE.CatmullRomCurve3([[a.x, a.z], [-8, 86], [9, 107], [32, 116],
       [55, 105], [71, 76], [b.x, b.z]].map(([x, z]) => new THREE.Vector3(x, 0, z)));
-    track.lane = { from, to, points: path.getSpacedPoints(Math.ceil(path.getLength() / TRACK_STEP)) };
+    const sampleLane = (path: THREE.CatmullRomCurve3, from: number, to: number): FieldLane => {
+      const length = path.getLength();
+      return { from, to, length, points: path.getSpacedPoints(Math.ceil(length / TRACK_STEP)) };
+    };
+    track.lane = sampleLane(path, from, to);
+    const fork = at(154), ridge = at(574);
+    const cedar = new THREE.CatmullRomCurve3([[fork.x, fork.z], [26, 70], [36, 52], [32, 33],
+      [16, 22], [-6, 16], [-24, 5], [-33, -13], [-32, -32], [-17, -49], [4, -58],
+      [19, -71], [24, -95], [ridge.x + 13, ridge.z + 9], [ridge.x, ridge.z]]
+      .map(([x, z]) => new THREE.Vector3(x, 0, z)), false, 'centripetal');
+    track.cedar = sampleLane(cedar, 154, 574);
   }
   return track;
+}
+
+// Distances beyond the loop address points on the adjoining forest road.
+export function roadPoint(track: Track, s: number) {
+  if (!track.cedar || s < track.length) return track.at(s);
+  const { points, length } = track.cedar;
+  const f = THREE.MathUtils.clamp((s - track.length) / length, 0, 1) * (points.length - 1);
+  const i = Math.min(points.length - 2, Math.floor(f)), a = points[i], b = points[i + 1];
+  const dx = b.x - a.x, dz = b.z - a.z, d = Math.hypot(dx, dz);
+  return { x: a.x + dx * (f - i), z: a.z + dz * (f - i), tx: dx / d, tz: dz / d };
 }

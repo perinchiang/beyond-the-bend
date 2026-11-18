@@ -121,7 +121,7 @@ export function waysides(track: Track, hf: HeightField, shared: PaintShared) {
         }
       }
   // Two painted posts frame the exit without obstructing either lane.
-  const gates = region ? [track.length * PASS_FRACTION] : track.lane ? [RICE_GATE, 227] :
+  const gates = region ? [track.length * PASS_FRACTION] : track.lane ? [227] :
     [0, ...SPRINT_GATES.map(fraction => track.length * fraction)];
   for (const gate of gates) for (const side of [-1, 1]) {
     site(gate, side * (region === 'arcade' ? 6.6 : 5.5));

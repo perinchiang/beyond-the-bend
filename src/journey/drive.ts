@@ -1,5 +1,6 @@
 import type { Car } from '../vehicle/car';
-import type { Track } from '../world/track';
+import { roadPoint, type Track } from '../world/track';
+import { MILL_DISTANCE } from '../world/cedar';
 import { STATION_S, TOWN_EXIT_S } from '../world/station';
 import { PASS_FRACTION, RICE_GATE, SPRINT_GATES } from '../world/waysides';
 import { logbook, regions, titles, type Progress, type Region } from './progress';
@@ -26,17 +27,18 @@ export function journeyDrive(
   let lastState: Progress | undefined, lastGoal: number | undefined;
   let pending = false,
     waitingForRice = false;
+  let pendingMill = false;
   let firstPass = book.state.rice < 3;
   let music = 0,
     target: number | undefined,
     context = '',
     hint = '';
   let lastUpdate = -Infinity;
-  const positionCache = new Map<number, ReturnType<Track['at']>>();
+  const positionCache = new Map<number, ReturnType<typeof roadPoint>>();
   function near(s: number, radius = 12) {
     let p = positionCache.get(s);
     if (!p) {
-      p = track.at(s);
+      p = roadPoint(track, s);
       positionCache.set(s, p);
     }
     return Math.hypot(car.x - p.x, car.z - p.z) < radius;
@@ -175,13 +177,36 @@ export function journeyDrive(
         if (firstPass && p.rice === 1 && near(92, 34)) music = 1;
         if (firstPass && p.rice >= 2 && near(125, 50)) music = 2;
         if (p.rice >= 3 && !near(125, 50)) firstPass = false;
-        if (!p.job && p.rice >= 3 && near(RICE_GATE, 16)) {
-          line = 'Cedar Pass trailhead';
-          actionView('forest', 'Enter Cedar Pass');
+      }
+      if (track.cedar && !p.job) {
+        const atMill = near(track.length + MILL_DISTANCE, 18);
+        if (!context && p.rice >= 3) {
+          target = p.sawmill ? track.cedar.to : track.length + MILL_DISTANCE;
+          line = p.sawmill ? 'Cedar Pass → North ridge' : 'Mill road → Old sawmill';
         }
-        if (!p.job && p.rice >= 3 && !context) {
-          target = RICE_GATE;
-          line = 'Cedar Pass trailhead';
+        if (
+          !context &&
+          p.rice < 3 &&
+          track.cedar.points.some(
+            (point, i) => i % 16 === 0 && Math.hypot(car.x - point.x, car.z - point.z) < 9,
+          )
+        )
+          line = 'Cedar Pass · Mill road';
+        if (near(track.cedar.from, 20) && !context) line = 'Mill road ↖ · Station ahead';
+        if (atMill) {
+          line = 'Old sawmill · Cedar Pass';
+          if (!p.sawmill && !pendingMill) {
+            pendingMill = true;
+            void edit((save) => {
+              save.sawmill = true;
+            }).finally(() => {
+              pendingMill = false;
+            });
+          }
+        }
+        if (near(track.cedar.to, 13) && (p.sawmill || p.visits > 0)) {
+          line = 'North ridge · Village road';
+          actionView('ridge', 'Enter Snowbell Ridge');
         }
       }
     } else if (region) {
@@ -226,7 +251,7 @@ export function journeyDrive(
     if (mapGoal !== lastGoal || lastUpdate === -Infinity) {
       pin.setAttribute('visibility', mapGoal === undefined ? 'hidden' : 'visible');
       if (mapGoal !== undefined) {
-        const t = track.at(mapGoal);
+        const t = roadPoint(track, mapGoal);
         pin.setAttribute('transform', `translate(${t.x} ${t.z})`);
       }
       lastGoal = mapGoal;
@@ -255,10 +280,20 @@ export function journeyDrive(
           p.delivered = true;
           p.job = null;
         });
-        if (award) notify((expected === 'parcel' ? 'Porter: Just in time!' : 'Mara: Our timetables!') + ' +' + award + ' coins');
+        if (award)
+          notify(
+            (expected === 'parcel' ? 'Porter: Just in time!' : 'Mara: Our timetables!') +
+              ' +' +
+              award +
+              ' coins',
+          );
       } else if (key === 'circuit') visit('circuit');
-      else if (key === 'forest') visit('forest');
-      else if (key === 'pass' && region) {
+      else if (key === 'ridge') {
+        await edit((p) => {
+          p.visits = Math.max(1, p.visits);
+        });
+        visit('snow');
+      } else if (key === 'pass' && region) {
         const index = regions.indexOf(region);
         await edit((p) => {
           p.visits = Math.max(p.visits, index + 1);
@@ -286,7 +321,9 @@ export function journeyDrive(
     get music() {
       return music;
     },
-    interact() { if (!action.hidden && !action.closest('[hidden]')) action.click(); },
+    interact() {
+      if (!action.hidden && !action.closest('[hidden]')) action.click();
+    },
     reset() {
       race = undefined;
       lastUpdate = -Infinity;

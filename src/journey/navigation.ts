@@ -17,15 +17,18 @@ export function roadGuide(track: Track, hf: HeightField) {
   }
   for (let i = 0; i < count; i++) nodes.push({ ...track.at((i * track.length) / count), links: [] });
   for (let i = 0; i < count; i++) join(i, (i + 1) % count);
-  if (track.lane) {
-    let prev = index(track.lane.from);
-    for (let i = 6; i < track.lane.points.length - 4; i += 6) {
-      const p = track.lane.points[i];
+  let cedarStart = -1;
+  for (const lane of [track.lane, track.cedar]) {
+    if (!lane) continue;
+    if (lane === track.cedar) cedarStart = nodes.length;
+    let prev = index(lane.from);
+    for (let i = 6; i < lane.points.length - 4; i += 6) {
+      const p = lane.points[i];
       const id = nodes.push({ x: p.x, z: p.z, links: [] }) - 1;
       join(prev, id);
       prev = id;
     }
-    join(prev, index(track.lane.to));
+    join(prev, index(lane.to));
   }
   const next = new Int32Array(nodes.length);
   const distance = (a: Node, b: Node) => Math.hypot(a.x - b.x, a.z - b.z);
@@ -78,7 +81,18 @@ export function roadGuide(track: Track, hf: HeightField) {
       last = -Infinity;
       return;
     }
-    const end = index(target);
+    const end =
+      target >= track.length && track.cedar && cedarStart >= 0
+        ? THREE.MathUtils.clamp(
+            cedarStart +
+              Math.round(
+                (((target - track.length) / track.cedar.length) * (track.cedar.points.length - 1)) / 6,
+              ) -
+              1,
+            cedarStart,
+            nodes.length - 1,
+          )
+        : index(target);
     if (end !== goal) {
       solve(end);
       goal = end;
