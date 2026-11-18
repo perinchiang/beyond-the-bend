@@ -98,7 +98,11 @@ export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy)
         a = mix(a, earth * 0.92, dust * (0.2 + cut * 0.34));
         a *= 1.0 + (nC.b - 0.5) * 0.10 + (dab - 0.3) * 0.025;
 
-        ${study === 'print' ? `
+        ${study === 'gouache' ? `
+          vec3 underpaint = vec3(0.187, 0.177, 0.218);
+          a = mix(a, underpaint, 0.48);
+          a = mix(a, vec3(0.246,0.226,0.257), 0.19 * smoothstep(0.40,0.63,nL.r) * dab);
+        ` : study === 'print' ? `
           a = mix(vec3(0.138, 0.144, 0.19), vec3(0.153, 0.16, 0.205),
                   smoothstep(0.65, 0.67, nA.r + 0.06 * nL.r));
           a = mix(a, earth, dust * 0.16);

@@ -72,17 +72,22 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
   geo.computeBoundingSphere();
 
   const C = (hex: string) => ({ value: new THREE.Color(hex) });
+  const meadow = study === 'gouache' ? {
+    grassLight: '#c2c891', grassMid: '#a0b586', grassDeep: '#789884', grassCool: '#729c94', grassDry: '#e4c586',
+  } : study === 'print' ? {
+    grassLight: '#c7c983', grassMid: '#9db789', grassDeep: '#729b81', grassCool: '#568977', grassDry: '#e8bf69',
+  } : PAL;
   const mat = paintMaterial(new THREE.MeshLambertMaterial({ color: 0xffffff }), shared, {
     key: study ? `terrain-${study}` : 'terrain',
     uniforms: {
       uStudyStone: { value: STUDY_STONE },
       uSdf: { value: hf.sdfTexture },
       uHalfRoad: { value: ROAD_HALF_WIDTH },
-      cLight: C(study === 'print' ? '#c7c983' : PAL.grassLight),
-      cMid: C(study === 'print' ? '#9db789' : PAL.grassMid),
-      cDeep: C(study === 'print' ? '#729b81' : PAL.grassDeep),
-      cCool: C(study === 'print' ? '#568977' : PAL.grassCool),
-      cDry: C(study === 'print' ? '#e8bf69' : PAL.grassDry),
+      cLight: C(meadow.grassLight),
+      cMid: C(meadow.grassMid),
+      cDeep: C(meadow.grassDeep),
+      cCool: C(meadow.grassCool),
+      cDry: C(meadow.grassDry),
     },
     vertexPars: /* glsl */ `attribute float aForm, aUnderstory; varying float vUnderstory;\nvarying float vForm;`,
     vertexMain: /* glsl */ `vForm = aForm; vUnderstory = aUnderstory;`,
@@ -156,6 +161,12 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
           float bristle = texture2D(uNoise, drag + 0.08 * nB.rg).a;
           float loaded = smoothstep(0.46, 0.82, nB.g);
           g = mix(g, mix(cDry, cLight, 0.42), 0.26 * loaded * smoothstep(0.47, 0.68, bristle));
+        ` : study === 'gouache' ? `
+          // Overlapping passes of an opaque flat brush; keep the field boundaries readable.
+          vec4 scumble = texture2D(uStrokes, rot2(p, -0.34) / vec2(53.0, 36.0) + 0.04 * nB.rg);
+          float loaded = smoothstep(0.12, 0.31, scumble.b) * smoothstep(0.34, 0.68, nB.g);
+          g = mix(g, mix(cLight, cDry, fields.x * 0.8), loaded * 0.25);
+          g = mix(g, cCool, smoothstep(0.54, 0.72, nA.g) * (1.0 - fields.x) * 0.20);
         ` : study === 'print' ? `
           // Separately cut colour plates follow the field boundaries. Broad regions of
           // unbroken ink keep the small cuts concentrated along banks and hollows.

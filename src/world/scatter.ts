@@ -8,6 +8,8 @@ import { edgeDistance, type GroundPatch } from './terrain';
 import { PaintShared, paintMaterial } from '../render/paint';
 import { woodlandBrushes, PropBuilder, makeBroadleaf, makeConifer, makeFlower, paintedShrub, makeTuft } from './flora';
 import { birchCrown, birchTrunk, birchBarkMaterial, birchLeafMaterial, fieldstone, STUDY_TREE, STUDY_STONE } from './paintedFlora';
+import { gouacheStone, gouacheStoneMaterial, gouacheTuft } from './gouacheGroundProps';
+import { createGouachePlants, gouacheFoliageMaterial } from './gouacheFlora';
 import { createOilLibrary, oilMaterials } from './oilStudy';
 import { createPrintLibrary, createPrintMaterial, printTuft } from './printStudy';
 import { meadowMasks } from './meadow';
@@ -70,7 +72,8 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   `;
   const oil = study === 'oil' ? oilMaterials(shared, swayVertex) : undefined;
   const ink = study === 'print' ? createPrintMaterial(shared, swayVertex) : undefined;
-  const foliageMat = ink ?? oil?.foliage ?? paintMaterial(new THREE.MeshLambertMaterial({ map: woodlandBrushes(), alphaTest: 0.42, alphaToCoverage: true, vertexColors: true, side: THREE.DoubleSide }), shared, {
+  const studyLeaves = study === 'gouache' ? gouacheFoliageMaterial(shared, swayVertex) : ink ?? oil?.foliage;
+  const foliageMat = studyLeaves ?? paintMaterial(new THREE.MeshLambertMaterial({ map: woodlandBrushes(), alphaTest: 0.42, alphaToCoverage: true, vertexColors: true, side: THREE.DoubleSide }), shared, {
     key: 'foliage',
     vertexPars: 'attribute float aSway;',
     vertexMain: swayVertex,
@@ -90,7 +93,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     vertexMain: swayVertex,
     volumeNormals: true,
   });
-  const rockMat = ink ?? oil?.stone ?? paintMaterial(new THREE.MeshLambertMaterial({ vertexColors: true }), shared, {
+  const rockMat = study === 'gouache' ? gouacheStoneMaterial(shared) : ink ?? oil?.stone ?? paintMaterial(new THREE.MeshLambertMaterial({ vertexColors: true }), shared, {
     key: 'rock',
     vertexPars: 'varying vec3 vStone;',
     vertexMain: 'vStone = position;',
@@ -117,9 +120,10 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   const propMat = paintMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), shared, { key: 'prop' });
 
   // ---------- model library ----------
-  const birchLeaves = ink ?? oil?.foliage ?? birchLeafMaterial(shared, swayVertex);
+  const birchLeaves = studyLeaves ?? birchLeafMaterial(shared, swayVertex);
   const trunk = birchTrunk();
-  const tufts = [1, 2, 3].map(seed => study === 'print' ? printTuft(seed) : makeTuft(seed, study === 'oil'));
+  const makeGrass = study === 'gouache' ? gouacheTuft : study === 'print' ? printTuft : makeTuft;
+  const tufts = [1, 2, 3].map(seed => makeGrass(seed, study === 'oil'));
   const grassMat = paintMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), shared, {
     key: study ? `meadow-grass-${study}` : 'meadow-grass', vertexPars: 'attribute float aSway;', vertexMain: swayVertex, volumeNormals: true,
     fragPars: meadowMasks,
@@ -128,14 +132,19 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
       float value = dot(diffuseColor.rgb, vec3(0.30, 0.59, 0.11));
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(1.65, 1.32, 0.54) * (0.14 + value * 0.61), fields.x * 0.91);
       diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.54, 1.08, 0.82) * (0.10 + value * 0.67), fields.y * 0.76);
-      ${study === 'print' ? `
+      ${study === 'gouache' ? `
+        vec3 sage = mix(vec3(0.21,0.32,0.22), vec3(0.43,0.49,0.29), smoothstep(0.13,0.40,value));
+        diffuseColor.rgb = mix(diffuseColor.rgb, mix(sage, vec3(0.58,0.49,0.27), fields.x), 0.74);
+      ` : study === 'print' ? `
         vec3 ink = mix(vec3(0.20,0.29,0.19), vec3(0.42,0.50,0.26), smoothstep(0.20,0.31,value));
         ink = mix(ink, vec3(0.52,0.44,0.20), fields.x);
         diffuseColor.rgb = mix(diffuseColor.rgb, ink, 0.68);
       ` : ''}
     `,
   });
-  const lib = study === 'print' ? createPrintLibrary() : study === 'oil' ? createOilLibrary(lowSpec) : {
+  const lib = study === 'gouache' ? {
+    ...createGouachePlants(lowSpec), rock: [0, 1, 2].map(gouacheStone),
+  } : study === 'print' ? createPrintLibrary() : study === 'oil' ? createOilLibrary(lowSpec) : {
     oak: [makeBroadleaf(11, 'oak', lowSpec), makeBroadleaf(12, 'oak', lowSpec)],
     lime: [makeBroadleaf(21, 'lime', lowSpec), makeBroadleaf(22, 'lime', lowSpec)],
     plum: [makeBroadleaf(31, 'plum', lowSpec)],
@@ -368,7 +377,8 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   }
 
   const flower = makeFlower();
-  const flowerPalette = study === 'print' ? ['#e5dbad', '#d7b977', '#9eaa98', '#b1ad84']
+  const flowerPalette = study === 'gouache' ? ['#f2e4bf', '#dfc17c', '#ceb8bc', '#d5afa0']
+    : study === 'print' ? ['#e5dbad', '#d7b977', '#9eaa98', '#b1ad84']
     : study === 'oil' ? ['#e6dfba', '#d8ba6a', '#c7b5bd', '#d0b09c']
     : ['#fbf5e4', '#f4d25a', '#d3b5ee', '#f3a58f'];
   const flowerCols = flowerPalette.map((h) => new THREE.Color(h));

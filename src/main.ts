@@ -31,10 +31,13 @@ stabiliseShadowFilter();
 const scene = new THREE.Scene();
 const shared = createPaintShared(renderer, WORLD_HALF, lowSpec);
 
-shared.uDirtWash.value = study === 'print' ? 0.86 : study === 'oil' ? 0.40 : 0;
+if (study) shared.uDirtWash.value = { print: 0.86, oil: 0.40, gouache: 0.66 }[study];
 if (study === 'print') {
   shared.uDirt.value.set('#d6b781');
   shared.uDirtDark.value.set('#ccb082');
+} else if (study === 'gouache') {
+  shared.uDirt.value.set('#d6c2a3');
+  shared.uDirtDark.value.set('#c5aa92');
 }
 
 // ---- light: one warm low sun, cool sky fill, a little green bounce ----
