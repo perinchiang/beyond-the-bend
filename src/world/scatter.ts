@@ -15,6 +15,8 @@ import { gouacheStone, gouacheStoneMaterial, gouacheTuft } from './gouacheGround
 import { createGouachePlants, gouacheFoliageMaterial } from './gouacheFlora';
 import { createOilLibrary, oilMaterials } from './oilStudy';
 import { createPrintLibrary, createPrintMaterial, printTuft } from './printStudy';
+import { cottageMaterial, type PostalPaint } from './postalPaint';
+import { postalOrchard } from './postalOrchard';
 import { groundGrassCover, meadowMasks } from './meadow';
 
 const CHUNK = 100; // metres — instances are batched per chunk so off-screen groups are culled
@@ -32,13 +34,14 @@ class Batcher {
     b.mats.push(m.clone());
     b.cols.push(c.clone());
   }
-  flush(material: THREE.Material, cast: boolean, receive: boolean, parent: THREE.Object3D): number {
+  flush(material: THREE.Material, cast: boolean, receive: boolean, parent: THREE.Object3D, depth?: THREE.Material): number {
     let total = 0;
     for (const b of this.map.values()) {
       const mesh = new THREE.InstancedMesh(b.geo, material, b.mats.length);
       b.mats.forEach((m, i) => { mesh.setMatrixAt(i, m); mesh.setColorAt(i, b.cols[i]); });
       mesh.instanceMatrix.needsUpdate = true;
       mesh.instanceColor!.needsUpdate = true;
+      if (depth) mesh.customDepthMaterial = depth;
       mesh.castShadow = cast;
       mesh.receiveShadow = receive;
       mesh.computeBoundingSphere();
@@ -53,7 +56,7 @@ class Batcher {
 
 export interface ScatterStats { trees: number; bushes: number; rocks: number; tufts: number; flowers: number }
 
-export function buildScatter(track: Track, hf: HeightField, shared: PaintShared, lowSpec: boolean, study?: StyleStudy, journey?: StationJourney, riceBed?: (x: number, z: number) => number): { group: THREE.Group; stats: ScatterStats; patches: GroundPatch[] } {
+export function buildScatter(track: Track, hf: HeightField, shared: PaintShared, lowSpec: boolean, study?: StyleStudy, journey?: StationJourney, riceBed?: (x: number, z: number) => number, postal?: PostalPaint): { group: THREE.Group; stats: ScatterStats; patches: GroundPatch[] } {
   const group = new THREE.Group();
   group.name = 'scatter';
   const rng = new Rng(7331);
@@ -163,6 +166,8 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   const woodyPlants = new Batcher(), rocks = new Batcher(), cover = new Batcher();
   const shrubs = study ? new Batcher() : woodyPlants;
   const bark = new Batcher(), brushes = new Batcher(), grass = new Batcher();
+  const orchard = postal ? postalOrchard(shared,swayVertex) : undefined;
+  const orchardPlants = new Batcher();
   const patches: GroundPatch[] = [];
   const placed: { x: number; z: number; r: number }[] = [];
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), s = new THREE.Vector3(), p = new THREE.Vector3();
@@ -187,6 +192,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     m.compose(p, q, s);
     const v = 1 + rng.gauss() * jitter;
     tint.setRGB(v * (1 + rng.gauss() * 0.03), v, v * (1 + rng.gauss() * 0.04));
+    const inVillage = orchard && postal?.inOrchard(x, z);
     if (sp === 'birch') {
       // Keep the approved avenue specimen's original pose.
       if (Math.hypot(x - STUDY_TREE.x, z - STUDY_TREE.y) < 0.6) {
@@ -194,7 +200,16 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
         tint.setRGB(1, 1, 1);
       }
       bark.add('birch', trunk, m, tint);
-      brushes.add('birch', geos[vi], m, tint);
+      if (inVillage) {
+        const round = Math.sin(x*.53+z*.19)>0;
+        orchardPlants.add(round ? 'roundBirch' : 'birch',round ? orchard.roundBirch : orchard.birch,m,tint);
+      } else brushes.add('birch', geos[vi], m, tint);
+    } else if (inVillage && (sp === 'bush' || sp === 'bloom')) {
+      const drift = .5+.5*Math.sin(x*.44+z*.17);
+      const mass = m.clone().scale(new THREE.Vector3(1.05+.46*drift, .48+.54*drift, 1.0+.31*drift));
+      orchardPlants.add('hedge',orchard.hedge,mass,tint);
+    } else if (inVillage && (sp === 'oak' || sp === 'lime')) {
+      orchardPlants.add('broad',orchard.broad,m,tint);
     } else if (sp === 'rock' && Math.hypot(x - STUDY_STONE.x, z - STUDY_STONE.y) < 0.6) {
       m.makeTranslation(x, hf.height(x, z), z);
       tint.setRGB(1, 1, 1);
@@ -434,6 +449,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     m.compose(p, q, s);
     const variation = rng.next();
     if (groundGrass && variation < Math.max(groundGrassCover(px, pz), riceBed?.(px, pz) ?? 0)) continue;
+    if (postal?.inOrchard(px, pz) && journey?.keepClear(px, pz)) continue;
     const vi = Math.floor(variation * tufts.length);
     grass.add(`tuft${vi}`, tufts[vi], m, tint);
     stats.tufts++;
@@ -477,6 +493,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
       }
     }
   }
+  if (orchard) orchardPlants.flush(orchard.material,true,false,group,orchard.depth);
   woodyPlants.flush(foliageMat, true, false, group);
   if (study) shrubs.flush(foliageMat, true, true, group);
   bark.flush(birchBarkMaterial(shared), true, false, group);
@@ -557,7 +574,8 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   if (journey) {
     fence(43, 71, 1);
     fence(80, 113, -1);
-    journey.draw(props, hf, propMat);
+    const cottages = journey.draw(props, hf, propMat, postal ? cottageMaterial(shared,postal) : undefined);
+    if (cottages) group.add(cottages);
     group.add(journey.parcel);
     if (track.cedar) {
       drawSawyard(props,hf,track);

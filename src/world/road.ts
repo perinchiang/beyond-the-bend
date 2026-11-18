@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { postalGLSL, type PostalPaint } from './postalPaint';
 import type { StyleStudy } from '../render/styleStudy';
 import { extraWidth, ROAD_HALF_WIDTH, ROAD_SKIRT, Track } from './track';
 import { PAL, PaintShared, paintMaterial } from '../render/paint';
@@ -10,7 +11,7 @@ const DASH_PERIOD = 9; // metres between centre-line dashes
  * coordinates, so edge lines and dashes stay razor-clean at any zoom (Art-of-Rally
  * readability). The paint on it is world-space, matching the terrain's treatment.
  */
-export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy, dirtMap?: THREE.DataTexture): THREE.Mesh {
+export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy, dirtMap?: THREE.DataTexture, postal?: PostalPaint): THREE.Mesh {
   const { samples, length } = track;
   const n = samples.length;
   const hw = ROAD_HALF_WIDTH;
@@ -63,8 +64,9 @@ export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy,
   const C = (hex: string) => ({ value: new THREE.Color(hex) });
   const snow = track.region === 'snow', ice = track.region === 'glacier';
   const mat = paintMaterial(new THREE.MeshLambertMaterial({ color: 0xffffff }), shared, {
-    key: study ? `road-${study}` : 'road',
+    key: postal ? 'road-postal-gouache' : study ? `road-${study}` : 'road',
     uniforms: {
+      ...postal?.uniforms,
       ...(dirtMap ? { uDirtRoads: { value: dirtMap } } : {}),
       uHalfRoad: { value: hw },
       uDash: { value: DASH_PERIOD },
@@ -74,6 +76,7 @@ export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy,
     vertexPars: /* glsl */ `attribute vec3 aRoad;\nvarying vec3 vRoad;`,
     vertexMain: /* glsl */ `vRoad = aRoad;`,
     fragPars: /* glsl */ `
+      ${postal ? postalGLSL : ''}
       uniform sampler2D uDirtRoads;
       uniform float uHalfRoad, uDash;
       uniform vec3 cAsphalt, cAsphaltLight, cAsphaltDark, cLine, cCentre;
@@ -112,6 +115,15 @@ export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy,
           a = mix(a, earth, dust * 0.16);
         ` : ''}
 
+        ${postal ? `
+        vec2 post = postLocal(p);
+        float village = postWeight(post);
+        if(village > 0.) {
+          vec3 stroke = pigmentAt(vec2(s/13.,vRoad.x/3.9) + nL.rg*.065);
+          vec3 slate = vec3(.187,.175,.168)*(.92+.096*stroke.r+.15*(nL.r-.5));
+          a = mix(a,slate,village*.91);
+          earth = mix(earth,postEarth(.44+.24*(stroke.r-.5)),village);
+        }` : ''}
         // Painted markings — anti-aliased analytically, lightly worn by the same paint noise.
         float aw = fwidth(vRoad.x) * 1.1 + 0.004;
         float wear = smoothstep(0.26, 0.52, nC.r * 0.55 + nA.g * 0.45);
@@ -128,7 +140,7 @@ export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy,
 
         // Crumbling edge where asphalt meets the earth shoulder.
         float wob = (nC.g - 0.5) * 0.26 + (nA.b - 0.5) * 0.30;
-        float sh = smoothstep(uHalfRoad - 0.05, uHalfRoad + 0.05, d + wob);
+        float sh = smoothstep(uHalfRoad - 0.05, uHalfRoad + 0.05, d + wob${postal ? ' * (1. - .78*village)' : ''});
         diffuseColor.rgb = mix(a, earth, sh);
         ${dirtMap ? `
         float crossing = (1.0-smoothstep(2.35,3.35,branch))*smoothstep(uHalfRoad-1.1,uHalfRoad+0.12,d);

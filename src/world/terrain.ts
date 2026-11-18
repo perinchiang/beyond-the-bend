@@ -1,3 +1,4 @@
+import { postalGLSL, postalGroundGLSL, type PostalPaint } from './postalPaint';
 import type { RiceField } from './field';
 import { regionalGround } from './routes';
 import type { Region } from '../journey/progress';
@@ -20,7 +21,7 @@ export function edgeDistance(x: number, z: number): number {
 
 export interface GroundPatch { x: number; z: number; radius: number }
 
-export function buildTerrain(hf: HeightField, shared: PaintShared, patches: GroundPatch[], study?: StyleStudy, region?: Region, cedar = false, paving?: (x: number, z: number) => number, field?: RiceField): THREE.Mesh {
+export function buildTerrain(hf: HeightField, shared: PaintShared, patches: GroundPatch[], study?: StyleStudy, region?: Region, cedar = false, paving?: (x: number, z: number) => number, field?: RiceField, postal?: PostalPaint): THREE.Mesh {
   const n = SEGMENTS + 1;
   const step = (WORLD_HALF * 2) / SEGMENTS;
   const h = new Float32Array(n * n);
@@ -87,8 +88,9 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
   const palette = region ? regionalGround[region] : [meadow.grassLight, meadow.grassMid, meadow.grassDeep, meadow.grassCool, meadow.grassDry];
   const groundGrass = cedar && study === 'gouache';
   const mat = paintMaterial(new THREE.MeshLambertMaterial({ color: 0xffffff }), shared, {
-    key: groundGrass ? 'terrain-gouache-ground-grass' : study ? `terrain-${study}` : 'terrain',
+    key: postal ? `terrain-postal-gouache-${postal.uniforms.uPostFeet.value.length}` : groundGrass ? 'terrain-gouache-ground-grass' : study ? `terrain-${study}` : 'terrain',
     uniforms: {
+      ...postal?.uniforms,
       ...(field ? { uFieldWake: { value: field.wake } } : {}),
       uStudyStone: { value: STUDY_STONE },
       uSdf: { value: hf.sdfTexture },
@@ -112,6 +114,7 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
       float gEdge;
       ${meadowMasks}
       ${groundGrass ? groundGrassPaint : ''}
+      ${postal ? postalGLSL + postalGroundGLSL(postal) : ''}
     `,
     fragColor: /* glsl */ `
       {
@@ -240,6 +243,11 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
           g = mix(g, cDry, straw * 0.48);
           g *= 1.0 - contact * 0.22;
         }
+        ${postal ? `
+        vec2 post = postLocal(p);
+        float village = postWeight(post);
+        if (village > 0.) g = mix(g,postGround(post,verge,nB,vForm,understoryWash),village);
+        ` : ''}
         diffuseColor.rgb = g;
 
         // --- Diorama edge: the world dissolves into paper through growing stippled holes.
@@ -255,6 +263,12 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
         }
       }
     `,
+    fragLight: postal ? `
+      float local = postWeight(postLocal(vWorldPos.xz));
+      float light = dot(reflectedLight.directDiffuse,vec3(.3,.59,.11)) / max(.025,dot(diffuseColor.rgb,vec3(.3,.59,.11)));
+      float shadowWash = (1.-smoothstep(.035,.30,light))*local;
+      vec3 coolShade = vec3(.103,.172,.146)*(.69 + .58*dot(diffuseColor.rgb,vec3(.3,.59,.11)));
+      reflectedLight.indirectDiffuse = mix(reflectedLight.indirectDiffuse,coolShade,shadowWash*.78);` : '',
     fragFinal: /* glsl */ `gl_FragColor.rgb = mix(gl_FragColor.rgb, uPaper, smoothstep(0.15, 0.95, gEdge) * 0.55);`,
   });
 

@@ -20,6 +20,7 @@ export function stationJourney(track: Track) {
       yaw: Math.atan2(t.tx, t.tz) };
   });
 
+  const villageSites = sites.slice(0,-1);
   const postOffice = sites[2], stationSite = sites[4];
   const parcel = new THREE.Group();
   parcel.name = 'station-parcel';
@@ -51,22 +52,27 @@ export function stationJourney(track: Track) {
     return paving(x, z) > 0.15 || sites.some(site => Math.hypot(x - site.x, z - site.z) < site.depth / 2 + 4);
   }
 
-  function draw(props: PropBuilder, hf: HeightField, material: THREE.Material) {
+  function draw(props: PropBuilder, hf: HeightField, material: THREE.Material, cottagePaint?: THREE.Material) {
+    const cottages = cottagePaint ? new PropBuilder() : props;
+    let shapes = props;
     const ivory = new THREE.Color('#ebd9ac'), shade = new THREE.Color('#7a8178');
     const terracotta = new THREE.Color('#ad6957'), tile = new THREE.Color('#87625b');
     const timber = new THREE.Color('#806953'), slate = new THREE.Color('#637774');
     const frame = new THREE.Matrix4(), matrix = new THREE.Matrix4();
     const box = (w: number, h: number, d: number, x: number, y: number, z: number, c: THREE.Color, tilt = 0) => {
       matrix.makeRotationZ(tilt).setPosition(x, y, z).premultiply(frame);
-      props.box(w, h, d, matrix, c);
+      shapes.box(w, h, d, matrix, c);
     };
     const postal = new THREE.Color('#a44838'), cream = new THREE.Color('#f1dfa8');
     const canopy = new THREE.Color('#547c74'), dark = new THREE.Color('#4e5149');
-    // An envelope on enamel, facing the arriving driver. The motif is legible without text.
-    function envelope(x: number, y: number, z: number, w: number) {
+    const warmLime = new THREE.Color('#f2d59e'), blueGlass = new THREE.Color('#60757d');
+    const tileLight = new THREE.Color('#bc704c'), tileShade = new THREE.Color('#a4664c');
+    const eave = new THREE.Color('#796653'), step = new THREE.Color('#958672');
+    // The enamel blade can be recognised on the return trip as well.
+    function envelope(x: number, y: number, z: number, w: number, face = -1) {
       box(w, w * 0.65, 0.10, x, y, z, cream);
       for (const side of [-1, 1])
-        box(w * 0.53, w * 0.082, 0.04, x + side * w * 0.22, y + w * 0.045, z - 0.07, postal, side * 0.49);
+        box(w * 0.53, w * 0.082, 0.04, x + side * w * 0.22, y + w * 0.045, z + face * 0.07, postal, side * 0.49);
     }
     const packageProps = new PropBuilder(), identity = new THREE.Matrix4();
     packageProps.box(1.15, 0.77, 0.83, identity, new THREE.Color('#ad814e'), new THREE.Color('#d6ad69'));
@@ -89,21 +95,51 @@ export function stationJourney(track: Track) {
       const { x, z, width: w, depth: d } = site;
       frame.makeRotationY(site.yaw).setPosition(x, hf.height(x, z), z);
       const station = site.s === STATION_S;
+      shapes = station ? props : cottages;
+      const painted = Boolean(cottagePaint) && !station;
+      const wall = painted ? warmLime : ivory;
       const h = station ? 3.6 : 2.9 + index % 2 * 0.4;
-      const roof = station ? slate : index % 2 ? tile : terracotta;
+      const roof = station ? slate : painted ? (index % 2 ? tileShade : tileLight) : (index % 2 ? tile : terracotta);
       const front = Math.sign(site.offset);
-      box(w, h + 1, d, 0, h / 2 - 0.5, 0, ivory);
-      // Stacked, narrowing gable courses fill both ends beneath the eaves.
-      for (let i = 0; i < 6; i++) {
-        box(w * (1 - (i + 0.5) / 6), w / 24, d, 0, h + w * (i + 0.5) / 24, 0, ivory);
+      box(w, h + 1, d, 0, h / 2 - 0.5, 0, wall);
+      if (painted) {
+        // One plaster face, with a brush-width of shade beneath each verge.
+        // The band follows the pitch on both approaches rather than lighting
+        // one side with a camera-facing decal.
+        for (const end of [-1,1]) {
+          const n = new THREE.Vector3(0,0,end).transformDirection(frame);
+          const face = (points: number[][], colour: THREE.Color, lift=0) => {
+            const first=shapes.pos.length/3;
+            for (const [x,y] of points)
+              shapes.vert(new THREE.Vector3(x,y,end*(d/2+.006+lift)).applyMatrix4(frame),n,colour);
+            for(let j=1;j<points.length-1;j++) {
+              const [a,b,c]=[points[0],points[j],points[j+1]];
+              const winding=(b[0]-a[0])*(c[1]-a[1])-(b[1]-a[1])*(c[0]-a[0]);
+              if (winding*end>0) shapes.tri(first,first+j,first+j+1);
+              else shapes.tri(first,first+j+1,first+j);
+            }
+          };
+          face([[-w/2,h],[w/2,h],[0,h+w/4]],wall);
+          for (const side of [-1,1]) {
+            const shadow = side<0 ? new THREE.Color('#cbb98f') : new THREE.Color('#b9ae8d');
+            face([[0,h+w/4],[side*w/2,h],[side*w/2,h-.19],[0,h+w/4-.35]],shadow,.013);
+          }
+        }
+      } else for (let i = 0; i < 6; i++) {
+        box(w * (1 - (i + 0.5) / 6), w / 24, d, 0, h + w * (i + 0.5) / 24, 0, wall);
       }
       for (const side of [-1, 1]) {
         const run = w / 2 + 0.45;
+        if (painted) {
+          // A single cool underside is more legible in Close than rows of tiles.
+          box(run*Math.sqrt(1.25)+.08,.19,d+.82,side*run/2,h+w/4-run/4-.16,0,eave,-side*Math.atan(.5));
+        }
         box(run * Math.sqrt(1.25) + 0.14, 0.24, d + 0.9, side * run / 2, h + w / 4 - run / 4, 0, roof, -side * Math.atan(0.5));
       }
       box(0.12, 2.25, 1.1, front * w / 2, 1.1, 0, timber);
       for (const side of [-1, 1]) box(0.14, 1.15, 1.25, front * w / 2, 1.8, side * d * 0.31, shade);
-      box(w + 0.08, 1.85, d + 0.1, 0, -0.55, 0, timber);
+      if (painted) box(w+.06,1.76,d+.07,0,-.71,0,new THREE.Color('#827e69'));
+      else box(w+.08,1.85,d+.1,0,-.55,0,timber);
       if (site === postOffice) {
         // A little covered counter faces the road; the enamel blade faces the approach.
         box(2.3, 0.26, 5.1, 3.25, 2.65, 0, canopy, -0.10);
@@ -112,8 +148,18 @@ export function stationJourney(track: Track) {
         box(0.87, 0.84, 2.08, 3.30, 0.49, -3.20, canopy);
         box(1.13, 0.13, 2.22, 3.30, 0.97, -3.20, timber);
         counter.set(3.30, 1.42, -3.45).applyMatrix4(frame);
-        box(1.93, 1.32, 0.19, 2.64, 3.22, -2.81, postal);
-        envelope(2.64, 3.22, -2.93, 1.29);
+        const signX = painted ? 3.29 : 2.64, signY = painted ? 3.39 : 3.22, signZ = painted ? -3.07 : -2.81;
+        if (painted) {
+          // The blade projects past the end of the awning. Its two irons
+          // are most visible when the driver looks back from the station.
+          for (const x of [signX-.64, signX+.64]) {
+            box(.14,.14,.94,x,2.63,signZ+.34,slate);
+            box(.14,.32,.14,x,2.74,signZ+.03,slate);
+          }
+        }
+        box(painted ? 2.10 : 1.93, 1.32, 0.19, signX, signY, signZ, postal);
+        envelope(signX, signY, signZ-.12, painted ? 1.58 : 1.29);
+        if (painted) envelope(signX,signY,signZ+.12,1.58,1);
         // Kerbside pillar box: projecting cap, letter slot and collection plate.
         box(1.02, 0.19, 0.88, 4.87, 0.10, -2.92, dark);
         box(0.86, 1.58, 0.74, 4.87, 0.93, -2.92, postal);
@@ -122,11 +168,11 @@ export function stationJourney(track: Track) {
         box(0.39, 0.32, 0.05, 4.87, 0.91, -3.31, cream);
       }
       if (!station) {
-        for (const side of [-1, 1]) {
-          const wx = side * w / 4, wz = -d / 2 - 0.04;
-          box(1.02, 1.16, 0.13, wx, 1.65, wz, timber);
-          box(0.78, 0.92, 0.14, wx, 1.65, wz - 0.03, shade);
-          box(1.18, 0.12, 0.27, wx, 1.07, wz, ivory);
+        for (const end of (painted ? [-1,1] : [-1])) for (const side of [-1,1]) {
+          const wx = side*w/4, wz = end*(d/2+.04);
+          box(1.02,1.16,.13,wx,1.65,wz,timber);
+          box(.78,.92,.14,wx,1.65,wz+end*(painted ? .065 : .03),painted ? blueGlass : shade);
+          box(1.18,.12,.27,wx,1.07,wz,painted ? step : ivory);
         }
         box(0.65, 0.6, 0.12, 0, h + 0.32, -d / 2, shade);
         box(0.7, 2, 0.78, -0.8, h + 1, d / 4, tile);
@@ -167,6 +213,7 @@ export function stationJourney(track: Track) {
       box(0.11, 0.56, 0.12, 0, 7.5, face - 0.12, slate);
       box(0.45, 0.1, 0.12, 0.18, 7.25, face - 0.12, slate);
     }
+    shapes = props;
     // A platform clock repeats the tower face one bend before the stopping place.
     const t = track.at(STATION_S - 27);
     const x = t.x + t.tz * 5.3, z = t.z - t.tx * 5.3;
@@ -176,6 +223,12 @@ export function stationJourney(track: Track) {
     box(1.43, 1.43, 0.11, 0, 3.25, -0.18, cream);
     box(0.11, 0.57, 0.07, 0, 3.49, -0.26, dark);
     box(0.44, 0.11, 0.07, 0.16, 3.25, -0.26, dark);
+    if (cottagePaint) {
+      const mesh = new THREE.Mesh(cottages.build(),cottagePaint);
+      mesh.name = 'Painted postal village';
+      mesh.castShadow = mesh.receiveShadow = true;
+      return mesh;
+    }
   }
 
   function atStation(x: number, z: number) {
@@ -183,6 +236,6 @@ export function stationJourney(track: Track) {
     return Math.abs(dx * stop.tx + dz * stop.tz) <= 8 &&
       Math.abs(-dx * stop.tz + dz * stop.tx) <= 6;
   }
-  return { keepClear, paving, draw, atStation, parcel, showParcel };
+  return { postOffice, villageSites, keepClear, paving, draw, atStation, parcel, showParcel };
 }
 export type StationJourney = ReturnType<typeof stationJourney>;

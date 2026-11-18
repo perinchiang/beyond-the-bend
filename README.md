@@ -108,6 +108,8 @@ this and laps the road with a tap-steering keyboard driver that has human reacti
 
 ## How the picture is made
 
+At the village post office, a pale clay pull-in leads from the asphalt to the parcel counter beneath a double-sided envelope sign. The four cottages and the orchard use a local gouache treatment: pigment follows the plaster and roof planes, while painted clusters sit on separate branch tips and overlap as the car turns. The two small pigment and foliage textures are embedded in the build, including the offline version. The station, hills and other routes keep their existing art.
+
 | Layer | Source |
 |---|---|
 | Terrain shape | Procedural height field (fBm + one authored hill and dip), 320×320 grid. The road corridor is cut in with a distance field so verges are flat and embankments ease into the hills. |
