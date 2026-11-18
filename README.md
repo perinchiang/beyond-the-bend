@@ -28,7 +28,7 @@ npm run car          # regenerate public/models/car.glb with Blender (needs `ble
 
 Driving sound starts on the first keyboard or touch gesture. Web Audio synthesizes the engine, tyre noise and grass rustle from the car’s speed, throttle and ground contact. Open **Pause** to freeze the drive and mute driving sounds. **Resume drive** continues from the same position and speed. The mute preference is remembered on this device.
 
-The upper-left HUD shows speed in km/h and a north-up road map. The red arrow tracks the car, including off-road, and the diamond marks the current destination. Tap **Map** to collapse it. The upper-right **Debug** selector lists the build ID and travel points for all routes.
+The upper-left HUD shows speed in km/h and a north-up road map. The red arrow tracks the car, including off-road, and the diamond marks the current destination. Tap **Map** to collapse it. With `?debug=1`, the upper-right **Debug** selector lists the build ID and travel points for all routes.
 
 The main entrance starts in Close view at the village exit. Follow the hayfield road through its broad bend to the clock tower at Foothill Station (306 m), then keep driving to return through the hills. Take the parcel at the village, then deliver it at the station for 100 coins. The pause menu holds the guide switch, garage, engine tune and unlocked passes. Return mail offers a trip back to town. At the end of the rice fields the left fork leads through Cedar Pass to the old sawmill. This 303 m gravel road crosses a timber bridge over Mill Brook and rejoins the original road on the north ridge. The first delivery adds guidance through the fields; the physical junction is always open. The remaining districts and Sunset Arcade are separate playable studies reached at their marked exits. The old hill sprint starts at the meadow bend. The local logbook saves purchases, deliveries and event records. Reloading starts the current map at its entrance. Use `?route=circuit` for the earlier road layout in gouache. For the earlier diorama, use `?study=original`. The [Close comparison](public/studies/close.html) includes the oil, print and gouache studies.
 
@@ -157,8 +157,8 @@ Touch controls appear on devices with a coarse pointer:
   Position determines power; releasing returns it to zero. Coasting still carries the car forward.
 - Hold **Brake** beside the throttle to slow down.
 - Steering, throttle and brake accept separate fingers simultaneously.
-- Tap **Driving / Free** at top-right to switch cameras. In Free mode, drag the scenery to orbit.
-- Tap **High / Normal / Close** to cycle the driving view. This button is disabled in Free mode.
+- Open **Pause** and tap **Driving / Free** to switch cameras. In Free mode, drag the scenery to orbit.
+- In **Pause**, tap **High / Normal / Close** to cycle the driving view. This button is disabled in Free mode.
 
 Keyboard controls are unchanged. Touch input resets on cancellation, capture loss, backgrounding,
 window blur and resize/rotation. Safe-area insets keep controls away from the notch/home indicator.

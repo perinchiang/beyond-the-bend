@@ -117,6 +117,7 @@ export function buildHeightField(track: Track, foothills = false): HeightField {
   // shallow bench across the hillside. Asphalt has priority at both junctions.
   const roads = track.lane ? dist.slice() : dist;
   const forestDist = track.cedar ? new Float32Array(dist.length).fill(FIELD_MAX) : undefined;
+  const dirtDist = track.lane ? new Float32Array(dist.length).fill(FIELD_MAX) : undefined;
   const forestHeight = track.cedar ? new Float32Array(dist.length) : undefined;
   for (const lane of [track.lane, track.cedar]) for (const p of lane?.points ?? []) {
     const forest = lane === track.cedar;
@@ -127,6 +128,7 @@ export function buildHeightField(track: Track, foothills = false): HeightField {
         const d = Math.hypot((ix + 0.5) * FIELD_RES - WORLD_HALF - p.x,
           (iz + 0.5) * FIELD_RES - WORLD_HALF - p.z) + 0.45;
         const i = iz * FIELD_N + ix;
+        if (dirtDist && d < dirtDist[i]) dirtDist[i] = d;
         if (forest && forestDist && forestHeight && d < forestDist[i]) {
           forestDist[i] = d;
           forestHeight[i] = level;
@@ -171,7 +173,7 @@ export function buildHeightField(track: Track, foothills = false): HeightField {
   for (let i = 0; i < dist.length; i++) {
     half[channels * i] = THREE.DataUtils.toHalfFloat(roads[i]);
     half[channels * i + 1] = THREE.DataUtils.toHalfFloat(width[i]);
-    if (forestDist) half[channels * i + 2] = THREE.DataUtils.toHalfFloat(forestDist[i]);
+    if (dirtDist && forestDist) half[channels * i + 2] = THREE.DataUtils.toHalfFloat(dirtDist[i]);
   }
   const sdfTexture = new THREE.DataTexture(half, FIELD_N, FIELD_N, forestDist ? THREE.RGBAFormat : THREE.RGFormat, THREE.HalfFloatType);
   sdfTexture.minFilter = sdfTexture.magFilter = THREE.LinearFilter;

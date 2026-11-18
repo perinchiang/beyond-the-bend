@@ -553,7 +553,8 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   if (journey) {
     fence(43, 71, 1);
     fence(80, 113, -1);
-    journey.draw(props, hf);
+    journey.draw(props, hf, propMat);
+    group.add(journey.parcel);
     if (track.cedar) {
       drawSawyard(props,hf,track);
       drawMillBridge(props,hf.surface(2.67,-57.24));

@@ -32,11 +32,18 @@ try {
   await ready();
   if (process.env.BTB_BUILD)
     assert.equal(await page.locator('#build-id').textContent(), 'Build ' + process.env.BTB_BUILD);
+  const parcel = () => page.evaluate(() => {
+    const mesh = window.__btb.scene.getObjectByName('station-parcel');
+    return { visible: mesh.visible, position: mesh.position.toArray() };
+  });
+  const counter = await parcel();
+  assert.ok(counter.visible);
   await act('Take station parcel');
   await saveMatches({ job: 'parcel' });
   await page.reload();
   await ready();
   await saveMatches({ job: 'parcel' });
+  assert.equal((await parcel()).visible, false, 'parcel leaves the counter and stays collected on reload');
   // The same bend on the unpaved lane should suggest different inputs at different speeds.
   async function atBend(speed) {
     return page.evaluate(async (speed) => {
@@ -67,6 +74,9 @@ try {
   await go(335);
   await page.getByRole('button', { name: 'Take village mail' }).waitFor();
   assert.equal((await state()).coins, 100);
+  const trolley = await parcel();
+  assert.ok(trolley.visible);
+  assert.notDeepEqual(trolley.position, counter.position, 'delivered parcel is now at the station');
   await act('Pause');
   await act('Buy Field Scout · 60 coins');
   await act('Touring engine · 40 coins');

@@ -27,14 +27,13 @@
 #destination { font-size: 11px; padding: 4px 8px 6px; }
 #destination::before { content: '◆'; color: #536e68; margin-right: 4px; }
 #travel { right: max(10px, env(safe-area-inset-right)); width: 84px; min-height: 44px; padding-left: 10px; cursor: pointer; }
-#pause-toggle { right: calc(max(10px, env(safe-area-inset-right)) + 90px); min-height: 44px; min-width: 52px; cursor: pointer; }
+#pause-toggle { right: max(10px, env(safe-area-inset-right)); min-height: 44px; min-width: 52px; cursor: pointer; }
 body #stats { top: max(60px, calc(env(safe-area-inset-top) + 52px)); }
-@media (any-pointer: coarse) {
-  #travel, #pause-toggle { top: max(60px, calc(env(safe-area-inset-top) + 52px)); }
-  body #stats { left: auto; right: max(10px, env(safe-area-inset-right)); top: max(108px, calc(env(safe-area-inset-top) + 100px)); }
-}
-
-body:has(#travel[hidden]) #pause-toggle { display: none; }
+body:has(#travel:not([hidden])) #pause-toggle { right: calc(max(10px, env(safe-area-inset-right)) + 90px); }
+body:has(#drive-hud[hidden]) #pause-toggle { display: none; }
+.camera-settings { display: flex; gap: 6px; align-items: center; margin-top: 8px; }
+.camera-settings span { margin-right: auto; }
+.camera-settings button { border: 1px solid #b4af99; border-radius: 7px; background: #ece6d6; color: inherit; font: inherit; min-width: 52px; min-height: 44px; }
 
 #pause-menu { color: #403a30; background: #f6f0df; border: 1px solid #aaa38e; border-radius: 14px; width: min(230px, 75vw); padding: 20px; font: 600 14px/1.4 ui-rounded, system-ui, sans-serif; }
 #pause-menu::backdrop { background: rgba(48, 49, 39, .35); }

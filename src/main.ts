@@ -83,8 +83,8 @@ if (track.cedar) scene.add(brookWater(shared));
 const guide = roadGuide(track, hf);
 scene.add(guide.mesh);
 const scatter = region && region !== 'forest' ? { group: new THREE.Group(), patches: [], stats: { region } } : buildScatter(track, hf, shared, lowSpec, study, journey);
-scene.add(buildTerrain(hf, shared, scatter.patches, study, region, Boolean(track.cedar)));
-scene.add(buildRoad(track, shared, study));
+scene.add(buildTerrain(hf, shared, scatter.patches, study, region, Boolean(track.cedar), journey?.paving, field?.bed));
+scene.add(buildRoad(track, shared, study, track.cedar ? hf.sdfTexture : undefined));
 scene.add(scatter.group);
 
 const car = new Car(hf, shared);
@@ -145,7 +145,7 @@ const touch = new TouchControls(
   () => { rig.toggleMode(); announceCamera(); },
   () => { rig.cyclePreset(); announceCamera(); },
 );
-const trip = journeyDrive(track, car, scenic, !styleParam && !region && !scenic, message => announceCamera(message), drivingTime);
+const trip = journeyDrive(track, car, scenic, !styleParam && !region && !scenic, message => announceCamera(message), drivingTime, journey?.showParcel);
 const drivingHud = createDrivingHud(track, scenic, s => {
   keys.clear();
   touch.reset();
@@ -157,12 +157,13 @@ const drivingHud = createDrivingHud(track, scenic, s => {
 }, trip.travel);
 drivingHud.hide(params.get('hud') === '0');
 let toastTimer = 0;
-function announceCamera(hint?: string) {
+function announceCamera(hint?: string, showToast = true) {
   touch.updateCamera(rig.mode, rig.preset.name);
   const label = rig.mode === 'drive' ? `Driving camera · ${rig.preset.name}` : 'Free camera';
   hudCam.innerHTML = rig.mode === 'drive'
     ? `<b>C</b> — free camera &nbsp;·&nbsp; <b>V</b> — view: <b>${rig.preset.name}</b> <i>(${DRIVE_PRESETS.map((p) => p.name).join(' / ')})</i>`
     : `<b>C</b> — driving camera &nbsp;·&nbsp; <b>drag</b> / <b>Q E</b> — orbit &nbsp;·&nbsp; <b>R F</b> — tilt &nbsp;·&nbsp; <b>wheel</b> / <b>Z X</b> — zoom &nbsp;·&nbsp; <b>shift-drag</b> — pan`;
+  if (!showToast) return;
   toast.textContent = hint ?? label;
   toast.classList.add('show');
   clearTimeout(toastTimer);
@@ -347,7 +348,7 @@ car.load(canvas.dataset.model ?? import.meta.env.BASE_URL + 'models/car.glb').ca
   drivingHud.travel.disabled = false;
   placeAt(startS);
   initCamera();
-  announceCamera();
+  announceCamera(undefined, false);
   console.info(`[btb] world built in ${(performance.now() - t0).toFixed(0)} ms`, scatter.stats);
   // hooks for automated screenshots
   (window as any).__btb = {

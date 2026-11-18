@@ -13,7 +13,9 @@ async function checkSession(blockBoth) {
       setItem.call(this, key, value);
     };
   }, blockBoth);
-  await page.goto(base);
+  const debug = new URL(base);
+  debug.searchParams.set('debug', '1');
+  await page.goto(debug.href);
   const act = name => page.getByRole('button', { name, exact: true }).click();
   const travel = page.locator('#travel');
   await act('Take station parcel');

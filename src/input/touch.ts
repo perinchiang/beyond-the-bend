@@ -14,10 +14,6 @@ export class TouchControls {
   constructor(toggleCamera: () => void, cyclePreset: () => void) {
     this.root.id = 'touch-controls';
     this.root.innerHTML = `
-      <div class="touch-camera">
-        <button type="button" id="touch-camera" aria-label="Switch camera mode">Driving</button>
-        <button type="button" id="touch-preset" aria-label="Cycle driving camera preset">Normal</button>
-      </div>
       <div class="touch-steering">
         <button type="button" data-hold="left" aria-label="Steer left">◀</button>
         <button type="button" data-hold="right" aria-label="Steer right">▶</button>
@@ -32,8 +28,8 @@ export class TouchControls {
       </div>`;
     document.body.append(this.root);
     this.throttle = this.root.querySelector('#touch-throttle')!;
-    this.mode = this.root.querySelector('#touch-camera')!;
-    this.preset = this.root.querySelector('#touch-preset')!;
+    this.mode = document.querySelector('#touch-camera')!;
+    this.preset = document.querySelector('#touch-preset')!;
     this.mode.addEventListener('click', toggleCamera);
     this.preset.addEventListener('click', cyclePreset);
     this.root.addEventListener('contextmenu', e => e.preventDefault());

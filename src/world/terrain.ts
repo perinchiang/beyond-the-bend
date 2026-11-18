@@ -19,7 +19,7 @@ export function edgeDistance(x: number, z: number): number {
 
 export interface GroundPatch { x: number; z: number; radius: number }
 
-export function buildTerrain(hf: HeightField, shared: PaintShared, patches: GroundPatch[], study?: StyleStudy, region?: Region, cedar = false): THREE.Mesh {
+export function buildTerrain(hf: HeightField, shared: PaintShared, patches: GroundPatch[], study?: StyleStudy, region?: Region, cedar = false, paving?: (x: number, z: number) => number, riceBed?: (x: number, z: number) => number): THREE.Mesh {
   const n = SEGMENTS + 1;
   const step = (WORLD_HALF * 2) / SEGMENTS;
   const h = new Float32Array(n * n);
@@ -29,6 +29,7 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
   const at = (ix: number, iz: number) => h[Math.min(n - 1, Math.max(0, iz)) * n + Math.min(n - 1, Math.max(0, ix))];
 
   const pos = new Float32Array(n * n * 3);
+  const groundPaint = new Float32Array(n * n * 2);
   const nor = new Float32Array(n * n * 3);
   const form = new Float32Array(n * n); // +crest / -hollow, used as painted form shading
   const K = 7; // curvature probe radius in cells (~9 m)
@@ -40,6 +41,8 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
     pos[i * 3 + 2] = iz * step - WORLD_HALF;
     v.set(at(ix - 1, iz) - at(ix + 1, iz), 2 * step, at(ix, iz - 1) - at(ix, iz + 1)).normalize();
     nor[i * 3] = v.x; nor[i * 3 + 1] = v.y; nor[i * 3 + 2] = v.z;
+    if (paving) groundPaint[2*i] = paving(pos[i*3], pos[i*3+2]);
+    if (riceBed) groundPaint[2*i+1] = riceBed(pos[i*3], pos[i*3+2]);
     const ring = (at(ix - K, iz) + at(ix + K, iz) + at(ix, iz - K) + at(ix, iz + K)
       + at(ix - K, iz - K) + at(ix + K, iz + K) + at(ix - K, iz + K) + at(ix + K, iz - K)) / 8;
     form[i] = Math.max(-1, Math.min(1, (h[i] - ring) / 0.55));
@@ -68,6 +71,7 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
   geo.setAttribute('normal', new THREE.BufferAttribute(nor, 3));
+  geo.setAttribute('aGroundPaint', new THREE.BufferAttribute(groundPaint, 2));
   geo.setAttribute('aForm', new THREE.BufferAttribute(form, 1));
   geo.setAttribute('aUnderstory', new THREE.BufferAttribute(understory, 1));
   geo.setIndex(new THREE.BufferAttribute(idx, 1));
@@ -92,9 +96,10 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
       cCool: C(palette[3]),
       cDry: C(palette[4]),
     },
-    vertexPars: /* glsl */ `attribute float aForm, aUnderstory; varying float vUnderstory;\nvarying float vForm;`,
-    vertexMain: /* glsl */ `vForm = aForm; vUnderstory = aUnderstory;`,
+    vertexPars: /* glsl */ `attribute vec2 aGroundPaint; varying vec2 vGroundPaint; attribute float aForm, aUnderstory; varying float vUnderstory;\nvarying float vForm;`,
+    vertexMain: /* glsl */ `vGroundPaint = aGroundPaint; vForm = aForm; vUnderstory = aUnderstory;`,
     fragPars: /* glsl */ `
+      varying vec2 vGroundPaint;
       uniform vec2 uStudyStone;
       uniform sampler2D uSdf;
       uniform float uHalfRoad;
@@ -185,6 +190,10 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
 
         float understoryWash = smoothstep(0.03, 0.94, vUnderstory);
         g = mix(g, cCool * 0.82, understoryWash * (0.38 + 0.09 * s2.b));
+        float fieldEdge = smoothstep(0.12,0.92,vGroundPaint.y+(nC.r-0.5)*0.14);
+        float lightBand = smoothstep(0.27,0.65,nA.g+0.18*dab);
+        vec3 crop = mix(cMid*vec3(0.73,0.72,0.44),cDry*vec3(0.87,0.92,0.68),lightBand);
+        g = mix(g,crop,fieldEdge*0.87);
         // --- Road shoulder: trodden dry grass, then bare earth meeting the asphalt.
         vec2 verge = texture2D(uSdf, p / (2.0 * uWorldHalf) + 0.5).rg;
         if (verge.x < uHalfRoad + 7.0) {
@@ -205,6 +214,8 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
         float crown = (1.0-smoothstep(0.12,0.82,laneDist))*smoothstep(0.30,0.68,nB.r);
         clay = mix(clay,cMid*0.80,crown*0.46);
         g = mix(g,clay,dirtLane*0.93);
+        float gravel = smoothstep(0.10,0.96,vGroundPaint.x+(nC.r-0.50)*0.17);
+        g = mix(g, mix(dirtColor(p),cDry,0.23)*(0.90+0.16*dab),gravel);
         vec2 yard = (p-vec2(-43.0,1.0))/vec2(13.5,12.0);
         float apron = 1.0-smoothstep(0.66,1.2,length(yard)+(nC.r-0.5)*0.16);
         g = mix(g,dirtColor(p)*mix(0.88,1.04,dab),apron*0.94);

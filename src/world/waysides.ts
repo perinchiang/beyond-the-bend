@@ -59,7 +59,8 @@ export function waysides(track: Track, hf: HeightField, shared: PaintShared) {
   if (region && region !== 'forest')
     for (let s = 0; s < track.length; s += region === 'market' ? 18 : 7)
       for (const side of [-1, 1]) {
-        site(s, side * rng.range(9, region === 'market' ? 14 : 32));
+        const setback = rng.range(9, region === 'market' ? 14 : 32);
+        site(s, side * setback);
         if (hf.roadDist(cx, cz) < 7) continue;
         const h = rng.range(4, 10);
         switch (region) {
@@ -113,11 +114,17 @@ export function waysides(track: Track, hf: HeightField, shared: PaintShared) {
               walkers.push(person);
             }
             break;
-          case 'arcade':
-            part('stone', h*2.3, h*0.96, h*1.6, h*0.20, rng.pick(['#b7828b', '#ba929a', '#d59a86']), side*7);
+          case 'arcade': {
+            const tint = rng.pick(['#b7828b', '#ba929a', '#d59a86']);
+            site(s, side * (setback + 12));
+            const clearance = 8.5 + h * 1.15;
+            if (track.samples.every(p => (p.x-cx)**2 + (p.z-cz)**2 > clearance**2))
+              part('stone', h*2.3, h*0.96, h*1.6, h*0.20, tint);
+            site(s, side * setback);
             part('box', 0.4, 2.2, 0.42, 1.1, '#795f80');
             part('box', 1.5, 0.72, 0.32, 2.22, rng.pick(['#dd947b', '#91bfc0', '#e7c68f']));
             break;
+          }
         }
       }
   // Two painted posts frame the exit without obstructing either lane.

@@ -216,7 +216,9 @@ export class CameraRig {
 
     if (this.mode === 'drive') {
       const p = this.preset;
-      const view = p.view * (1 + this.fieldReveal * 0.12);
+      // On a tall screen keep both shoulders in Close so roadside destinations stay visible.
+      const portraitWidth = p.name === 'Close' ? 24 / this.aspect : 0;
+      const view = Math.max(p.view, portraitWidth) * (1 + this.fieldReveal * 0.12);
       const pitchGoal = p.pitch * DEG;
       // Sit behind the car, taking the short way round.
       const yawGoal = this.yaw + wrapAngle(carHeading + Math.PI - this.yaw);

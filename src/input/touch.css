@@ -11,7 +11,6 @@
 .throttle-fill { position: absolute; inset: auto 0 0; height: calc(var(--throttle) * 100%); background: rgba(127,153,103,.3); pointer-events: none; }
 .throttle-thumb { position: absolute; left: 7px; right: 7px; bottom: calc(16px + var(--throttle) * (100% - 40px)); height: 6px; border-radius: 4px; background: #746b58; pointer-events: none; }
 .throttle-label { position: absolute; top: 12px; width: 100%; text-align: center; font-size: 10px; pointer-events: none; }
-.touch-camera { position: absolute; top: max(10px, env(safe-area-inset-top)); right: max(16px, env(safe-area-inset-right)); display: flex; gap: 8px; }
 @media (any-pointer: coarse) {
   #touch-controls { display: block; }
   #hud { display: none; }

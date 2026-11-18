@@ -67,6 +67,10 @@ export function createDrivingHud(track: Track, scenic: boolean, teleport: (s: nu
     speed.textContent = String(Math.round(Math.abs(metresPerSecond) * 3.6));
     if (!panel.hidden) marker.setAttribute('transform', `translate(${x} ${z}) rotate(${180 - heading * 180 / Math.PI})`);
   }
-  function hide(hidden: boolean) { root.hidden = travel.hidden = hidden; }
+  const debugTravel = new URLSearchParams(location.search).get('debug') === '1';
+  function hide(hidden: boolean) {
+    root.hidden = hidden;
+    travel.hidden = hidden || !debugTravel;
+  }
   return { update, hide, travel };
 }

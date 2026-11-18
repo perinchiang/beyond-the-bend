@@ -60,12 +60,20 @@ export default async function checkMobileControls() {
     window.dispatchEvent(new Event('resize'));
     check('Rotation/resize clears touch input', b.touch.input.steer === 0 && b.touch.input.throttle === 0);
     b.view({ s: 232, mode: 'drive', preset: 1 });
-    root.querySelector('#touch-camera').click();
-    check('Touch switches to Free and disables driving presets', b.rig.mode === 'free' && root.querySelector('#touch-preset').disabled);
-    root.querySelector('#touch-camera').click();
+    document.querySelector('#pause-toggle').click();
+    document.querySelector('#touch-camera').scrollIntoView({ block: 'center' });
+    document.querySelector('#touch-camera').click();
+    check('Touch switches to Free and disables driving presets', b.rig.mode === 'free' && document.querySelector('#touch-preset').disabled);
+    document.querySelector('#touch-camera').click();
     const presets = [];
-    for (let i = 0; i < 3; i++) { root.querySelector('#touch-preset').click(); presets.push(b.rig.preset.name); }
+    for (let i = 0; i < 3; i++) { document.querySelector('#touch-preset').click(); presets.push(b.rig.preset.name); }
     check('Touch cycles Close / High / Normal', presets.join() === 'Close,High,Normal');
+    for (const id of ['touch-camera','touch-preset']) {
+      const rect = document.getElementById(id).getBoundingClientRect();
+      check(id + ' fits pause menu', rect.width >= 44 && rect.height >= 44 && rect.top >= 0 && rect.bottom <= innerHeight);
+    }
+    document.querySelector('#resume-drive').click();
+    await frame();
     key('keydown', 'KeyW'); key('keydown', 'KeyD'); await frame();
     check('Desktop W+D remains functional', applied.throttle === 1 && applied.steer === -1);
     key('keyup', 'KeyW'); key('keyup', 'KeyD'); key('keydown', 'Space'); await frame();
@@ -76,7 +84,7 @@ export default async function checkMobileControls() {
     check('Keyboard preset switching works', b.rig.preset.name === 'Close');
     check('Camera changes do not alter vehicle simulation', JSON.stringify(b.simulate(false)) === JSON.stringify(b.simulate(true)));
     b.view({ s: 232, mode: 'drive', preset: 1 });
-    for (const el of [left, right, brake, throttle, root.querySelector('#touch-camera'), root.querySelector('#touch-preset')]) {
+    for (const el of [left, right, brake, throttle]) {
       const box = el.getBoundingClientRect();
       check(el.getAttribute('aria-label') + ' fits viewport and 44px target', box.x >= 0 && box.y >= 0 && box.right <= innerWidth && box.bottom <= innerHeight && box.width >= 44 && box.height >= 44);
     }

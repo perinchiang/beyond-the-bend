@@ -10,7 +10,7 @@ const DASH_PERIOD = 9; // metres between centre-line dashes
  * coordinates, so edge lines and dashes stay razor-clean at any zoom (Art-of-Rally
  * readability). The paint on it is world-space, matching the terrain's treatment.
  */
-export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy): THREE.Mesh {
+export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy, dirtMap?: THREE.DataTexture): THREE.Mesh {
   const { samples, length } = track;
   const n = samples.length;
   const hw = ROAD_HALF_WIDTH;
@@ -65,6 +65,7 @@ export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy)
   const mat = paintMaterial(new THREE.MeshLambertMaterial({ color: 0xffffff }), shared, {
     key: study ? `road-${study}` : 'road',
     uniforms: {
+      ...(dirtMap ? { uDirtRoads: { value: dirtMap } } : {}),
       uHalfRoad: { value: hw },
       uDash: { value: DASH_PERIOD },
       cAsphalt: C(ice ? '#9cbac6' : snow ? '#b2b8b8' : PAL.asphalt), cAsphaltLight: C(ice ? '#cadfdf' : snow ? '#d9d9d2' : PAL.asphaltLight), cAsphaltDark: C(ice ? '#7f9fac' : snow ? '#99a4ab' : PAL.asphaltDark),
@@ -73,6 +74,7 @@ export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy)
     vertexPars: /* glsl */ `attribute vec3 aRoad;\nvarying vec3 vRoad;`,
     vertexMain: /* glsl */ `vRoad = aRoad;`,
     fragPars: /* glsl */ `
+      uniform sampler2D uDirtRoads;
       uniform float uHalfRoad, uDash;
       uniform vec3 cAsphalt, cAsphaltLight, cAsphaltDark, cLine, cCentre;
       varying vec3 vRoad;
@@ -114,10 +116,9 @@ export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy)
         float aw = fwidth(vRoad.x) * 1.1 + 0.004;
         float wear = smoothstep(0.26, 0.52, nC.r * 0.55 + nA.g * 0.45);
         float edgeLine = 1.0 - smoothstep(0.075 - aw, 0.075 + aw, abs(d - (uHalfRoad - 0.44)));
-        ${track.lane ? `if (vRoad.x > 0.0 && (abs(s - ${(track.lane.from * vScale).toFixed(2)}) < 8.0 ||
-          abs(s - ${(track.lane.to * vScale).toFixed(2)}) < 8.0)) edgeLine = 0.0;` : ''}
-        ${track.cedar ? `if (vRoad.x < 0.0 && (abs(s - ${(track.cedar.from * vScale).toFixed(2)}) < 10.5 ||
-          abs(s - ${(track.cedar.to * vScale).toFixed(2)}) < 10.5)) edgeLine = 0.0;` : ''}
+        ${dirtMap ? `
+        float branch = texture2D(uDirtRoads,p/(2.0*uWorldHalf)+0.5).b - 0.45;
+        edgeLine *= smoothstep(2.35,3.35,branch);` : ''}
         a = mix(a, cLine, edgeLine * mix(0.42, 0.94, wear));
         float ds = fract(s / uDash) * uDash;
         float al = fwidth(s) * 1.1 + 0.004;
@@ -129,6 +130,10 @@ export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy)
         float wob = (nC.g - 0.5) * 0.26 + (nA.b - 0.5) * 0.30;
         float sh = smoothstep(uHalfRoad - 0.05, uHalfRoad + 0.05, d + wob);
         diffuseColor.rgb = mix(a, earth, sh);
+        ${dirtMap ? `
+        float crossing = (1.0-smoothstep(2.35,3.35,branch))*smoothstep(uHalfRoad-1.1,uHalfRoad+0.12,d);
+        float tracks = 1.0-smoothstep(0.12,0.5,abs(branch-1.02));
+        diffuseColor.rgb = mix(diffuseColor.rgb,earth*vec3(.91,.82,.72)*(1.0-.23*tracks),crossing);` : ''}
       }
     `,
   });

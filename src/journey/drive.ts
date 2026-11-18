@@ -12,6 +12,7 @@ export function journeyDrive(
   circuit: boolean,
   notify: (message: string) => void,
   drivingTime: () => number,
+  showParcel?: (inTransit: boolean, delivered: boolean) => void,
 ) {
   const book = logbook(),
     region = track.region;
@@ -57,6 +58,7 @@ export function journeyDrive(
   };
   function garage() {
     const p = book.state;
+    showParcel?.(p.job === 'parcel', p.delivered);
     car.equip(p.scout && p.equipped, p.tuned);
     car.bonusRun = region === 'arcade';
     car.ice = region === 'glacier' ? 0.88 : region === 'snow' ? 0.25 : 0;
