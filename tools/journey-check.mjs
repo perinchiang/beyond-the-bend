@@ -37,6 +37,23 @@ try {
   await page.reload();
   await ready();
   await saveMatches({ job: 'parcel' });
+  // The same bend on the unpaved lane should suggest different inputs at different speeds.
+  async function atBend(speed) {
+    return page.evaluate(async speed => {
+      const { car, track, scene } = window.__btb;
+      const lane = track.lane.points;
+      const start = Math.floor(lane.length * 0.45);
+      car.place(lane[start].x, lane[start].z, Math.atan2(lane[start+1].x-lane[start].x,lane[start+1].z-lane[start].z));
+      car.speed = speed;
+      await new Promise(resolve => setTimeout(resolve, 180));
+      const guide = scene.getObjectByName('road-guide');
+      const colors = guide.instanceColor.array;
+      return Array.from({length:guide.count}, (_,i) => colors[3*i] > colors[3*i+2]);
+    }, speed);
+  }
+  const slow = await atBend(2), fast = await atBend(27);
+  assert.ok(slow.length && slow.every(warm=>!warm), 'blue on the slow field bend');
+  assert.ok(fast.some(Boolean), 'braking guidance on the same fast bend');
   await go(335);
   await act('Deliver parcel');
   await saveMatches({ delivered: true, coins: 100, job: null });

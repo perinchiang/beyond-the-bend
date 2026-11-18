@@ -1,7 +1,7 @@
 import type { Car } from '../vehicle/car';
 import type { Track } from '../world/track';
 import { STATION_S, TOWN_EXIT_S } from '../world/station';
-import { PASS_FRACTION, RICE_GATE } from '../world/waysides';
+import { PASS_FRACTION, RICE_GATE, SPRINT_GATES } from '../world/waysides';
 import { logbook, regions, titles, type Progress, type Region } from './progress';
 
 export function journeyDrive(
@@ -21,7 +21,7 @@ export function journeyDrive(
   const tune = document.querySelector<HTMLButtonElement>('#garage-tune')!;
   const journal = document.querySelector<HTMLElement>('#journal')!;
   const gate = track.length * PASS_FRACTION;
-  const gates = [0.08, 0.16, 0.24].map((f) => f * track.length);
+  const gates = SPRINT_GATES.map((f) => f * track.length);
   let race: { elapsed: number; drift: number; checkpoint: number } | undefined;
   let lastState: Progress | undefined, lastGoal: number | undefined;
   let pending = false,
@@ -247,15 +247,15 @@ export function journeyDrive(
         notify(key === 'parcel' ? 'Mara: Catch the afternoon train!' : 'Porter: Take these timetables home.');
       } else if (key === 'deliver') {
         const expected = book.state.job;
+        let award = 0;
         await edit((p) => {
           if (!expected || p.job !== expected) return;
-          p.coins += expected === 'parcel' && !p.delivered ? 100 : 35;
+          award = expected === 'parcel' && !p.delivered ? 100 : 35;
+          p.coins += award;
           p.delivered = true;
           p.job = null;
         });
-        notify(
-          expected === 'parcel' ? 'Porter: Just in time. Thank you!' : 'Mara: The village has its timetables!',
-        );
+        if (award) notify((expected === 'parcel' ? 'Porter: Just in time!' : 'Mara: Our timetables!') + ' +' + award + ' coins');
       } else if (key === 'circuit') visit('circuit');
       else if (key === 'forest') visit('forest');
       else if (key === 'pass' && region) {
@@ -286,6 +286,7 @@ export function journeyDrive(
     get music() {
       return music;
     },
+    interact() { if (!action.hidden && !action.closest('[hidden]')) action.click(); },
     reset() {
       race = undefined;
       lastUpdate = -Infinity;

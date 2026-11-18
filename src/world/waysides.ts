@@ -5,6 +5,7 @@ import type { Track } from './track';
 import type { HeightField } from './heightfield';
 
 export const PASS_FRACTION = 0.42;
+export const SPRINT_GATES = [0.08, 0.16, 0.24];
 export const RICE_GATE = 154;
 export function waysides(track: Track, hf: HeightField, shared: PaintShared) {
   const region = track.region;
@@ -120,11 +121,13 @@ export function waysides(track: Track, hf: HeightField, shared: PaintShared) {
         }
       }
   // Two painted posts frame the exit without obstructing either lane.
-  const gate = region ? PASS_FRACTION * track.length : RICE_GATE;
-  for (const side of [-1, 1]) {
+  const gates = region ? [track.length * PASS_FRACTION] : track.lane ? [RICE_GATE, 227] :
+    [0, ...SPRINT_GATES.map(fraction => track.length * fraction)];
+  for (const gate of gates) for (const side of [-1, 1]) {
     site(gate, side * (region === 'arcade' ? 6.6 : 5.5));
+    const sprint = !region && gate !== RICE_GATE;
     part('box', 0.34, 3, 0.35, 1.5, '#82725f');
-    part('box', 1.45, 0.82, 0.24, 2.67, '#507b75');
+    part('box', 1.45, 0.82, 0.24, 2.67, sprint ? '#ab755a' : '#507b75');
     part('box', 0.65, 0.14, 0.27, 2.67, '#f3e4bd', 0, 0, 0.22);
   }
   for (const [kind, items] of batches) {

@@ -64,6 +64,7 @@ export function roadGuide(track: Track, hf: HeightField) {
     }),
     10,
   );
+  mesh.name = 'road-guide';
   mesh.frustumCulled = false;
   mesh.renderOrder = 3;
   mesh.count = 0;

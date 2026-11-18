@@ -74,7 +74,7 @@ const track = buildTrack(region ?? (scenic ? 'foothill' : 'circuit'));
 document.body.classList.toggle('arcade', region === 'arcade');
 const journey = scenic ? stationJourney(track) : undefined;
 const hf = buildHeightField(track, scenic);
-const landmarks = scenic || region ? waysides(track, hf, shared) : undefined;
+const landmarks = !styleParam ? waysides(track, hf, shared) : undefined;
 if (landmarks) scene.add(landmarks.group);
 const field = scenic ? riceField(track, hf, shared, lowSpec) : undefined;
 if (field) scene.add(field.mesh);
@@ -171,6 +171,7 @@ pauseMenu.addEventListener('close', () => {
 addEventListener('keydown', (e) => {
   if (pausedAt || e.repeat || e.target instanceof HTMLSelectElement) return;
   if (e.target instanceof HTMLButtonElement && (e.code === 'Space' || e.code === 'Enter')) return;
+  if (e.code === 'KeyE' && rig.mode === 'drive') trip.interact();
   keys.add(e.code);
   if (e.code === 'KeyH') {
     hud.classList.toggle('hidden');
@@ -247,6 +248,7 @@ function fitShadow() {
 const stats = document.getElementById('stats')!;
 const showStats = params.has('stats');
 let last = performance.now(), frames = 0, acc = 0, fixedTime = params.has('t') ? num('t', 0) : -1;
+let lastInteract = false;
 function frame(now: number) {
   if (pausedAt) {
     requestAnimationFrame(frame);
@@ -258,6 +260,9 @@ function frame(now: number) {
   renderer.info.reset();
 
   const pad = Array.from(navigator.getGamepads?.() ?? []).find(p => p?.mapping === 'standard');
+  const interact = Boolean(pad?.buttons[0]?.pressed);
+  if (interact && !lastInteract) trip.interact();
+  lastInteract = interact;
   const axis = pad?.axes[0] ?? 0;
   const stick = Math.abs(axis) < 0.12 ? 0 : Math.sign(axis) * (Math.abs(axis) - 0.12) / 0.88;
   const input = {

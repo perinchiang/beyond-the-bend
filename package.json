@@ -14,7 +14,9 @@
     "test:comfort": "node tools/run-comfort.mjs",
     "test:handling": "node tools/run-handling.mjs",
     "test:mobile": "node tools/mobile-browser-check.mjs",
-    "test:stability": "node tools/stability.mjs"
+    "test:stability": "node tools/stability.mjs",
+    "package:desktop": "npm run build && node tools/desktop/package.mjs",
+    "test:journey": "node tools/journey-check.mjs"
   },
   "dependencies": {
     "three": "^0.187.0"

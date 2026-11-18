@@ -18,7 +18,8 @@ npm run car          # regenerate public/models/car.glb with Blender (needs `ble
 | | |
 |---|---|
 | `W A S D` / arrows | drive (steering is always relative to the car) |
-| `Space` | brake |
+| `Space` / `Shift` | service brake / handbrake |
+| `E` (driving) | use the nearby delivery, gate or challenge |
 | `C` | switch **Driving camera** ⇄ **Free camera** |
 | `V` | cycle driving view: **High → Normal → Close** (Driving camera only) |
 | drag / `Q E` · `R F` · wheel / `Z X` · shift-drag | orbit · tilt · zoom · pan (**Free camera only**) |
@@ -27,13 +28,17 @@ npm run car          # regenerate public/models/car.glb with Blender (needs `ble
 
 Driving sound starts on the first keyboard or touch gesture. Web Audio synthesizes the engine, tyre noise and grass rustle from the car’s speed, throttle and ground contact. Open **Pause** to freeze the drive and mute driving sounds. **Resume drive** continues from the same position and speed. The mute preference is remembered on this device.
 
-The upper-left HUD shows speed in km/h and a north-up road map. The red arrow tracks the car, including off-road, and the diamond marks Foothill Station. Tap **Map** to collapse it. The upper-right **Debug** selector lists the build ID and travel points for both maps.
+The upper-left HUD shows speed in km/h and a north-up road map. The red arrow tracks the car, including off-road, and the diamond marks the current destination. Tap **Map** to collapse it. The upper-right **Debug** selector lists the build ID and travel points for all routes.
 
-The main entrance starts in Close view at the village exit. Follow the hayfield road through its broad bend to the clock tower at Foothill Station (306 m), then keep driving to return through the hills. Reload to start the trip again. Use `?route=circuit` for the earlier road layout in gouache. For the earlier diorama, use `?study=original`. The [Close comparison](public/studies/close.html) includes the oil, print and gouache studies.
+The main entrance starts in Close view at the village exit. Follow the hayfield road through its broad bend to the clock tower at Foothill Station (306 m), then keep driving to return through the hills. Take the parcel at the village, then deliver it at the station for 100 coins. The pause menu holds the guide switch, garage, engine tune and unlocked passes. Return mail offers a trip back to town. After the first delivery the rice road opens a passage to Cedar Pass. Follow the marked exits through the five districts to Sunset Arcade, or turn onto the old hill sprint at the meadow bend. The local logbook saves purchases, deliveries and event records. Reloading starts the current map at its entrance. Use `?route=circuit` for the earlier road layout in gouache. For the earlier diorama, use `?study=original`. The [Close comparison](public/studies/close.html) includes the oil, print and gouache studies.
 
 URL options: `?cam=free`, `?preset=0|1|2`, `?s=<metres along the road>`, `?q=low|high`,
 `?tilt=0`, `?stats=1`, `?hud=0`, `?haze=<0..1>`. `?lens=ortho` restores the old parallel projection
 (used by `tools/stability.mjs`, and handy for comparing the two).
+
+A standard gamepad uses the left stick to steer, RT for throttle, LT for braking, the west face button for the handbrake and the south face button to interact. In the touch layout use **Slide** for the handbrake.
+
+Run `npm run test:journey` against the local dev server to exercise deliveries, driving guidance, the garage, six road passages and the timed sprint. Set `BTB_URL` to check a production deployment. Run `npm run package:desktop` for a self-contained offline HTML build in `test-results/desktop/`. On macOS with Xcode command line tools, the command also builds a local WebKit app.
 
 ### Cameras
 
