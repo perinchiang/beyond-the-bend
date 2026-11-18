@@ -461,6 +461,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     for (const side of [-1, 1]) {
       const off = side * (HW + 1.25);
       const x = t.x - t.tz * off, z = t.z + t.tx * off;
+      if (track.lane && hf.roadDist(x, z) < HW + 0.4) continue;
       frame(x, z, t.tx, t.tz, hf.surface(x, z));
       part(0.12, 0.62, 0.07, 0, 0.31, 0, offWhite, white);
       part(0.125, 0.16, 0.075, 0, 0.7, 0, black);

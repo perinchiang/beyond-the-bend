@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { fbm2, noise2, smoothstep, mix } from '../core/noise';
-import { ROAD_HALF_WIDTH, Track } from './track';
+import { extraWidth, ROAD_HALF_WIDTH, Track } from './track';
 
 export const WORLD_HALF = 200; // terrain spans [-200, 200] m on X and Z
 export const PLAY_HALF = 176; // scatter / driving limit before the paper dissolve
@@ -73,6 +73,7 @@ export function buildHeightField(track: Track, foothills = false): HeightField {
   for (const s of samples) {
     // The inside shoulder opens into a cut patch; the opposite bank grows
     // close to the asphalt. A slow wash breaks up equally curved stretches.
+    const stretch = 1 + extraWidth(track, s.s) / ROAD_HALF_WIDTH;
     const wash = noise2(s.x / 31, s.z / 31, 406);
     const bend = Math.max(-1, Math.min(1, s.k * 28));
     const shoulder = (side: number) => Math.max(0.38, 0.85 + wash * 0.60
@@ -85,7 +86,7 @@ export function buildHeightField(track: Track, foothills = false): HeightField {
       const wz = (iz + 0.5) * FIELD_RES - WORLD_HALF - s.z;
       for (let ix = x0; ix <= x1; ix++) {
         const wx = (ix + 0.5) * FIELD_RES - WORLD_HALF - s.x;
-        const d = Math.sqrt(wx * wx + wz * wz);
+        const d = Math.sqrt(wx * wx + wz * wz) / stretch;
         const idx = iz * FIELD_N + ix;
         if (d < dist[idx]) {
           dist[idx] = d;
@@ -104,11 +105,25 @@ export function buildHeightField(track: Track, foothills = false): HeightField {
     return mix(mix(arr[i], arr[i + 1], tx), mix(arr[i + FIELD_N], arr[i + FIELD_N + 1], tx), tz);
   };
 
-  const roadDist = (x: number, z: number) => sample(dist, x, z);
+  // The unpaved lane follows the existing ground, including the asphalt shoulders
+  // at its mouths. Only its paint, planting clearance and wheel grip need a mask.
+  const roads = track.lane ? dist.slice() : dist;
+  for (const p of track.lane?.points ?? []) {
+    const cx = Math.floor((p.x + WORLD_HALF) / FIELD_RES), cz = Math.floor((p.z + WORLD_HALF) / FIELD_RES);
+    for (let iz = Math.max(0, cz - R); iz <= Math.min(FIELD_N - 1, cz + R); iz++) {
+      for (let ix = Math.max(0, cx - R); ix <= Math.min(FIELD_N - 1, cx + R); ix++) {
+        const d = Math.hypot((ix + 0.5) * FIELD_RES - WORLD_HALF - p.x,
+          (iz + 0.5) * FIELD_RES - WORLD_HALF - p.z) + 0.45;
+        const i = iz * FIELD_N + ix;
+        if (d < roads[i]) { roads[i] = d; width[i] = 0.28; }
+      }
+    }
+  }
+  const roadDist = (x: number, z: number) => sample(roads, x, z);
 
   const height = (x: number, z: number): number => {
     const nat = land(x, z);
-    const d = roadDist(x, z);
+    const d = sample(dist, x, z);
     if (d >= ROAD_HALF_WIDTH + VERGE + BLEND) return nat;
     const w = 1 - smoothstep(ROAD_HALF_WIDTH + VERGE, ROAD_HALF_WIDTH + VERGE + BLEND, d);
     // Keep the terrain slightly below the asphalt so the two surfaces never z-fight.
@@ -116,7 +131,7 @@ export function buildHeightField(track: Track, foothills = false): HeightField {
   };
 
   const surface = (x: number, z: number): number => {
-    const d = roadDist(x, z);
+    const d = sample(dist, x, z);
     const h = height(x, z);
     if (d > ROAD_HALF_WIDTH + 1.2) return h;
     const w = 1 - smoothstep(ROAD_HALF_WIDTH + 0.4, ROAD_HALF_WIDTH + 1.2, d);
@@ -130,7 +145,7 @@ export function buildHeightField(track: Track, foothills = false): HeightField {
 
   const half = new Uint16Array(dist.length * 2);
   for (let i = 0; i < dist.length; i++) {
-    half[2 * i] = THREE.DataUtils.toHalfFloat(dist[i]);
+    half[2 * i] = THREE.DataUtils.toHalfFloat(roads[i]);
     half[2 * i + 1] = THREE.DataUtils.toHalfFloat(width[i]);
   }
   const sdfTexture = new THREE.DataTexture(half, FIELD_N, FIELD_N, THREE.RGFormat, THREE.HalfFloatType);

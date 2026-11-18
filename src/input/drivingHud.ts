@@ -16,6 +16,11 @@ export function createDrivingHud(track: Track, scenic: boolean, teleport: (s: nu
   const line = track.samples.filter((_, i) => i % 6 === 0)
     .map(t => t.x.toFixed(1) + ',' + t.z.toFixed(1)).join(' L');
   document.getElementById('map-road')!.setAttribute('d', 'M' + line + ' Z');
+  if (track.lane) {
+    document.getElementById('map-lane')!.setAttribute('d', 'M' + track.lane.points
+      .filter((_, i, points) => i % 4 === 0 || i === points.length - 1)
+      .map(p => p.x.toFixed(1) + ',' + p.z.toFixed(1)).join(' L'));
+  }
   if (scenic) {
     const station = track.at(STATION_S);
     const pin = document.getElementById('station-pin')!;
@@ -30,7 +35,7 @@ export function createDrivingHud(track: Track, scenic: boolean, teleport: (s: nu
   });
 
   document.getElementById('build-id')!.textContent = 'Build ' + import.meta.env.VITE_BUILD_ID;
-  const stops: Record<string, number> = { town: TOWN_EXIT_S, bend: 227, station: STATION_S, circuit: 232 };
+  const stops: Record<string, number> = { town: TOWN_EXIT_S, fork: 100, bend: 227, station: STATION_S, circuit: 232 };
   travel.addEventListener('change', () => {
     const key = travel.value;
     if (!(key in stops)) return;

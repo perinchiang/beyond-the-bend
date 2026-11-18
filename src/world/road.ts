@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import type { StyleStudy } from '../render/styleStudy';
-import { ROAD_HALF_WIDTH, ROAD_SKIRT, Track } from './track';
+import { extraWidth, ROAD_HALF_WIDTH, ROAD_SKIRT, Track } from './track';
 import { PAL, PaintShared, paintMaterial } from '../render/paint';
 
 const DASH_PERIOD = 9; // metres between centre-line dashes
@@ -31,11 +31,12 @@ export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy)
     l3.set(-s.tz, 0, s.tx);
     n3.crossVectors(l3, t3).normalize();
     if (n3.y < 0) n3.negate();
+    const stretch = 1 + extraWidth(track, s.s) / hw;
     for (let c = 0; c < cols; c++) {
       const j = i * cols + c;
-      pos[j * 3] = s.x + l3.x * lat[c];
+      pos[j * 3] = s.x + l3.x * lat[c] * stretch;
       pos[j * 3 + 1] = s.y + drop[c];
-      pos[j * 3 + 2] = s.z + l3.z * lat[c];
+      pos[j * 3 + 2] = s.z + l3.z * lat[c] * stretch;
       nor[j * 3] = n3.x; nor[j * 3 + 1] = n3.y; nor[j * 3 + 2] = n3.z;
       uv[j * 3] = lat[c];
       uv[j * 3 + 2] = s.k;
@@ -112,6 +113,8 @@ export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy)
         float aw = fwidth(vRoad.x) * 1.1 + 0.004;
         float wear = smoothstep(0.26, 0.52, nC.r * 0.55 + nA.g * 0.45);
         float edgeLine = 1.0 - smoothstep(0.075 - aw, 0.075 + aw, abs(d - (uHalfRoad - 0.44)));
+        ${track.lane ? `if (vRoad.x > 0.0 && (abs(s - ${(track.lane.from * vScale).toFixed(2)}) < 8.0 ||
+          abs(s - ${(track.lane.to * vScale).toFixed(2)}) < 8.0)) edgeLine = 0.0;` : ''}
         a = mix(a, cLine, edgeLine * mix(0.42, 0.94, wear));
         float ds = fract(s / uDash) * uDash;
         float al = fwidth(s) * 1.1 + 0.004;

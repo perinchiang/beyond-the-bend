@@ -40,7 +40,19 @@ export interface TrackSample {
   k: number;
 }
 
+export interface FieldLane {
+  from: number;
+  to: number;
+  points: THREE.Vector3[];
+}
+
+export function extraWidth(track: Track, s: number) {
+  return track.lane ? 0.55 * THREE.MathUtils.smoothstep(s, 38, 80) *
+    (1 - THREE.MathUtils.smoothstep(s, 222, 285)) : 0;
+}
+
 export interface Track {
+  lane?: FieldLane;
   samples: TrackSample[];
   length: number;
   /** Sample by arc length with wrap-around and linear interpolation. */
@@ -81,5 +93,13 @@ export function buildTrack(route: 'circuit' | 'foothill' = 'circuit'): Track {
       s, y: a.y + (b.y - a.y) * t, k: a.k + (b.k - a.k) * t,
     };
   };
-  return { samples, length, at };
+  const track: Track = { samples, length, at };
+  if (route === 'foothill') {
+    const from = 120, to = 230;
+    const a = at(from), b = at(to);
+    const path = new THREE.CatmullRomCurve3([[a.x, a.z], [-8, 86], [9, 107], [32, 116],
+      [55, 105], [71, 76], [b.x, b.z]].map(([x, z]) => new THREE.Vector3(x, 0, z)));
+    track.lane = { from, to, points: path.getSpacedPoints(Math.ceil(path.getLength() / TRACK_STEP)) };
+  }
+  return track;
 }
