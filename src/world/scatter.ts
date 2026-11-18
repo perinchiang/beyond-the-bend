@@ -15,7 +15,7 @@ import { gouacheStone, gouacheStoneMaterial, gouacheTuft } from './gouacheGround
 import { createGouachePlants, gouacheFoliageMaterial } from './gouacheFlora';
 import { createOilLibrary, oilMaterials } from './oilStudy';
 import { createPrintLibrary, createPrintMaterial, printTuft } from './printStudy';
-import { meadowMasks } from './meadow';
+import { groundGrassCover, meadowMasks } from './meadow';
 
 const CHUNK = 100; // metres — instances are batched per chunk so off-screen groups are culled
 const HW = ROAD_HALF_WIDTH;
@@ -57,6 +57,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   const group = new THREE.Group();
   group.name = 'scatter';
   const rng = new Rng(7331);
+  const groundGrass = Boolean(journey) && study === 'gouache';
 
   // ---------- materials ----------
   const swayVertex = /* glsl */ `
@@ -206,6 +207,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
       // under each tuft so the blades stay rooted on the sloping outcrops.
       for (const [dx, dz, size] of [[0.60, -0.65, 0.78], [0.76, -0.44, 0.60], [-0.42, 0.87, 0.68]]) {
         const foot = new THREE.Vector3(dx, 0, dz).applyMatrix4(m);
+        if (groundGrass && groundGrassCover(foot.x, foot.z) > 0.5) continue;
         foot.y = hf.height(foot.x, foot.z) - 0.025;
         const matrix = m.clone().scale(new THREE.Vector3(size, size, size)).setPosition(foot);
         grass.add(`tuft${vi}`, tufts[vi], matrix, new THREE.Color('#91a268'));
@@ -430,7 +432,9 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     s.set(sc, sc * rng.range(0.8, 1.3), sc);
     p.set(px, hf.height(px, pz) - 0.02, pz);
     m.compose(p, q, s);
-    const vi = Math.floor(rng.next() * tufts.length);
+    const variation = rng.next();
+    if (groundGrass && variation < groundGrassCover(px, pz)) continue;
+    const vi = Math.floor(variation * tufts.length);
     grass.add(`tuft${vi}`, tufts[vi], m, tint);
     stats.tufts++;
   }

@@ -7,7 +7,7 @@ import { ROAD_HALF_WIDTH } from './track';
 import { PAL, PaintShared, paintMaterial } from '../render/paint';
 
 import { STUDY_STONE } from './paintedFlora';
-import { meadowMasks } from './meadow';
+import { groundGrassPaint, meadowMasks } from './meadow';
 
 const SEGMENTS = 320; // 1.25 m cells — plenty for gentle hills, light enough for mobile
 
@@ -84,8 +84,9 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
     grassLight: '#c7c983', grassMid: '#9db789', grassDeep: '#729b81', grassCool: '#568977', grassDry: '#e8bf69',
   } : PAL;
   const palette = region ? regionalGround[region] : [meadow.grassLight, meadow.grassMid, meadow.grassDeep, meadow.grassCool, meadow.grassDry];
+  const groundGrass = cedar && study === 'gouache';
   const mat = paintMaterial(new THREE.MeshLambertMaterial({ color: 0xffffff }), shared, {
-    key: study ? `terrain-${study}` : 'terrain',
+    key: groundGrass ? 'terrain-gouache-ground-grass' : study ? `terrain-${study}` : 'terrain',
     uniforms: {
       uStudyStone: { value: STUDY_STONE },
       uSdf: { value: hf.sdfTexture },
@@ -108,6 +109,7 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
       varying float vUnderstory;
       float gEdge;
       ${meadowMasks}
+      ${groundGrass ? groundGrassPaint : ''}
     `,
     fragColor: /* glsl */ `
       {
@@ -190,6 +192,10 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
 
         float understoryWash = smoothstep(0.03, 0.94, vUnderstory);
         g = mix(g, cCool * 0.82, understoryWash * (0.38 + 0.09 * s2.b));
+        ${groundGrass ? `
+          float footprint = max(fwidth(p.x), fwidth(p.y));
+          g *= 1.0 + groundGrass(p, nB.r, footprint) * (1.0 - vGroundPaint.y);
+        ` : ''}
         float fieldEdge = smoothstep(0.12,0.92,vGroundPaint.y+(nC.r-0.5)*0.14);
         float lightBand = smoothstep(0.27,0.65,nA.g+0.18*dab);
         vec3 crop = mix(cMid*vec3(0.73,0.72,0.44),cDry*vec3(0.87,0.92,0.68),lightBand);
