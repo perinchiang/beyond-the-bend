@@ -2,15 +2,6 @@ import * as THREE from 'three';
 import { Rng } from '../core/rng';
 import { noise2, smoothstep } from '../core/noise';
 
-/**
- * Procedural model generators for broadleaf trees, conifers and meadow cover.
- *
- * Each broadleaf canopy is a cluster of lobes, every lobe a dark inner core
- * wrapped in hundreds of small leaf "dabs" (real polygons, no alpha textures). The dabs carry
- * volume normals (pointing out of the lobe rather than out of the card), so the whole crown
- * shades as one soft painted form while its silhouette stays stippled and organic.
- */
-
 const V = THREE.Vector3;
 const UP = new V(0, 1, 0);
 const C = (hex: string) => new THREE.Color(hex);
@@ -43,29 +34,6 @@ export class Builder {
     g.computeBoundingBox();
     return g;
   }
-}
-
-const tmpA = new V(), tmpB = new V(), tmpC = new V();
-
-function randUnit(rng: Rng, out = new V()): THREE.Vector3 {
-  const y = rng.range(-1, 1), a = rng.range(0, Math.PI * 2), r = Math.sqrt(1 - y * y);
-  return out.set(Math.cos(a) * r, y, Math.sin(a) * r);
-}
-
-/** A single leaf dab: a teardrop kite (long tip, short heel) spanned by two in-plane axes. */
-function leaf(b: Builder, c: THREE.Vector3, u: THREE.Vector3, v: THREE.Vector3, len: number, wid: number, shade: THREE.Vector3, color: THREE.Color, sway: number) {
-  const i0 = b.vert(tmpA.copy(c).addScaledVector(u, len * 0.62), shade, color, sway);
-  const i1 = b.vert(tmpA.copy(c).addScaledVector(v, wid * 0.5).addScaledVector(u, -len * 0.06), shade, color, sway);
-  const i2 = b.vert(tmpA.copy(c).addScaledVector(u, -len * 0.38), shade, color, sway);
-  const i3 = b.vert(tmpA.copy(c).addScaledVector(v, -wid * 0.5).addScaledVector(u, -len * 0.06), shade, color, sway);
-  b.tri(i0, i1, i2);
-  b.tri(i0, i2, i3);
-}
-
-function leafFacing(b: Builder, rng: Rng, c: THREE.Vector3, facing: THREE.Vector3, len: number, wid: number, shade: THREE.Vector3, color: THREE.Color, sway: number) {
-  const u = randUnit(rng, tmpB).cross(facing).normalize();
-  const v = tmpC.copy(facing).cross(u).normalize();
-  leaf(b, c, u.clone(), v.clone(), len, wid, shade, color, sway);
 }
 
 const ICO = [new THREE.IcosahedronGeometry(1, 0), new THREE.IcosahedronGeometry(1, 1), new THREE.IcosahedronGeometry(1, 2)];
@@ -106,155 +74,198 @@ export function tube(b: Builder, rings: { p: THREE.Vector3; r: number; c: THREE.
   }
 }
 
-interface Lobe { c: THREE.Vector3; r: THREE.Vector3 }
-
-export interface FoliagePalette {
-  core: string; low: string; high: string; glint: string; trunk: string; trunkDark: string;
+// Four mipmapped cells: solid pigment for wood and crown interiors, a leafy
+// margin, a flat fir bough and a flowering-thorn shoot. Transparent gutters
+// keep neighbouring impressions apart as the camera pulls away.
+export function woodlandBrushes() {
+  const canvas = document.createElement('canvas');
+  canvas.width = canvas.height = 256;
+  const ctx = canvas.getContext('2d')!;
+  const rng = new Rng(830);
+  ctx.fillStyle = 'white';
+  ctx.fillRect(0,128,128,128);
+  for (let cell=1; cell<=3; cell++) {
+    ctx.save();
+    ctx.translate(64+128*(cell%2),64+128*(cell<2 ? 1 : 0));
+    const mark = (x:number, y:number, rx:number, ry:number, angle:number, grey:number) => {
+      ctx.fillStyle = `rgb(${grey},${grey},${grey})`;
+      ctx.beginPath();
+      ctx.ellipse(x,y,rx,ry,angle,0,Math.PI*2);
+      ctx.fill();
+    };
+    ctx.lineWidth = cell === 2 ? 3.4 : 2.3;
+    ctx.strokeStyle = '#c3c3c3';
+    ctx.beginPath(); ctx.moveTo(-47,7); ctx.quadraticCurveTo(2,-9,46,-2); ctx.stroke();
+    if (cell === 1) {
+      for (let i=0;i<49;i++) {
+        const a=rng.range(0,6.28), r=Math.sqrt(rng.next());
+        const x=Math.cos(a)*r*45, y=Math.sin(a)*r*36;
+        mark(x,y, rng.range(6,13),rng.range(3.7,7.4),0.42+0.006*x,rng.int(220,255));
+      }
+    } else {
+      const pairs = cell === 2 ? 21 : 7;
+      for (let i=0;i<pairs;i++) for (const sign of [-1,1]) {
+        const t=(i+rng.range(-0.25,0.25))/pairs, x=-44+85*t;
+        const spread=(cell === 2 ? 27 : 19)*(0.42+0.65*Math.sin(t*Math.PI));
+        const endX=x+10+9*t, endY=-2+spread*sign;
+        const angle=Math.atan2(endY+2,endX-x);
+        mark((endX+x)/2,endY/2-1,Math.hypot(endX-x,endY+2)*0.61,
+          cell === 2 ? rng.range(3,5.5) : rng.range(6,9),angle,rng.int(216,254));
+      }
+    }
+    ctx.restore();
+  }
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
 }
 
-export const FOLIAGE: Record<string, FoliagePalette> = {
-  oak: { core: '#2c6140', low: '#3d7c46', high: '#8bb84e', glint: '#b4cf5e', trunk: '#7a5642', trunkDark: '#5a3e33' },
-  lime: { core: '#4d803d', low: '#639444', high: '#b0cc5c', glint: '#d2de74', trunk: '#7a5642', trunkDark: '#5a3e33' },
-  plum: { core: '#6a3547', low: '#8a4350', high: '#c46a5a', glint: '#dc8a6a', trunk: '#6d4a3a', trunkDark: '#523a30' },
-  fir: { core: '#22503f', low: '#2c634a', high: '#58945a', glint: '#7eaf62', trunk: '#5e4336', trunkDark: '#47332b' },
+class Woodland extends Builder {
+  private uv: number[] = [];
+  override vert(p: THREE.Vector3, n: THREE.Vector3, c: THREE.Color, sway = 0) {
+    this.uv.push(0.25,0.25);
+    return super.vert(p,n,c,sway);
+  }
+  impression(p: THREE.Vector3, u: THREE.Vector3, v: THREE.Vector3, cell: number, normal: THREE.Vector3, ink: THREE.Color) {
+    const k = this.pos.length / 3;
+    for (const [x,y] of [[-1,-1],[1,-1],[1,1],[-1,1]]) {
+      super.vert(p.clone().addScaledVector(u,x).addScaledVector(v,y),normal,ink,0.32);
+      this.uv.push((cell%2 + 0.5 + 0.49*x)*0.5,(Math.floor(cell/2)+0.5+0.49*y)*0.5);
+    }
+    this.tri(k,k+1,k+2); this.tri(k,k+2,k+3);
+  }
+  override build() {
+    const g = super.build();
+    g.setAttribute('uv',new THREE.Float32BufferAttribute(this.uv,2));
+    return g;
+  }
+}
+
+type TreeKind = 'oak' | 'lime' | 'plum';
+
+// Pigments describe the connected underside, body and lit shoulder of a spray.
+const inks = {
+  oak: ['#41665c', '#709153', '#abc36a'],
+  lime: ['#547e66', '#9db664', '#ccce79'],
+  plum: ['#754859', '#a5575b', '#cf8070'],
+  fir: ['#345c59', '#528473', '#91af81'],
+  thorn: ['#436e62', '#73905a', '#acb975'],
 };
 
-function dressLobes(b: Builder, rng: Rng, lobes: Lobe[], pal: FoliagePalette, opts: { density: number; leaf: [number, number]; core: number; lump: number; swayBase: number; yMin: number; yMax: number }) {
-  const core = C(pal.core), low = C(pal.low), high = C(pal.high), glint = C(pal.glint);
-  const centre = new V();
-  lobes.forEach((l) => centre.add(l.c));
-  centre.multiplyScalar(1 / lobes.length);
-  const span = Math.max(0.001, opts.yMax - opts.yMin);
-
-  lobes.forEach((l, li) => {
-    // The core carries the same light-to-dark gradient as the leaves (a shade deeper), so gaps
-    // between dabs read as foliage depth rather than as a ball showing through.
-    blob(b, l.c, l.r.clone().multiplyScalar(opts.core), 1, opts.lump, li * 3.7 + rng.next() * 9, (d, p) => {
-      const t = (p.y - opts.yMin) / span;
-      return core.clone().lerp(low, smoothstep(0.0, 0.5, t + d.y * 0.25)).lerp(high, smoothstep(0.45, 1.1, t * 0.75 + d.y * 0.3) * 0.7);
-    }, opts.swayBase * 0.6);
-  });
-
-  const dir = new V(), p = new V(), q = new V(), facing = new V(), shade = new V(), out = new V(), jitter = new V();
-  const col = new THREE.Color();
-  lobes.forEach((l, li) => {
-    const count = Math.round(opts.density * l.r.x * l.r.z);
-    for (let i = 0; i < count; i++) {
-      randUnit(rng, dir);
-      if (dir.y < -0.3 || (dir.y < 0.1 && rng.next() < 0.45)) continue; // favour what an elevated camera sees
-      p.copy(dir).multiply(l.r).multiplyScalar(rng.range(0.9, 1.1)).add(l.c);
-      // drop leaves buried inside a neighbouring lobe
-      let buried = false;
-      for (let k = 0; k < lobes.length && !buried; k++) {
-        if (k === li) continue;
-        q.copy(p).sub(lobes[k].c).divide(lobes[k].r);
-        if (q.lengthSq() < 0.74) buried = true;
-      }
-      if (buried) continue;
-      out.copy(p).sub(centre).normalize();
-      facing.copy(dir).multiplyScalar(0.55).addScaledVector(UP, 0.5).addScaledVector(randUnit(rng, jitter), 0.5).normalize();
-      shade.copy(dir).multiplyScalar(0.7).addScaledVector(out, 0.38).addScaledVector(UP, 0.2).normalize();
-      const t = (p.y - opts.yMin) / span;
-      col.copy(low).lerp(high, smoothstep(0.1, 0.95, t * 0.75 + rng.gauss() * 0.17 + dir.y * 0.3));
-      const roll = rng.next();
-      if (roll < 0.12) col.lerp(glint, 0.6);
-      else if (roll < 0.24) col.lerp(core, 0.45);
-      if (dir.y < 0.05) col.multiplyScalar(0.84);
-      const len = rng.range(opts.leaf[0], opts.leaf[1]) * (rng.next() < 0.14 ? 1.5 : 1);
-      leafFacing(b, rng, p, facing, len, len * rng.range(0.5, 0.95), shade.clone(), col.clone(), opts.swayBase + t * 0.9);
-    }
-  });
+function branch(b: Builder, points: number[][], dark: THREE.Color, light: THREE.Color) {
+  tube(b, points.map(([x,y,z,r], i) => ({ p: new V(x,y,z), r, c: i === 0 ? dark : light })), 7);
 }
 
-export function makeBroadleaf(seed: number, pal: FoliagePalette): THREE.BufferGeometry {
-  const rng = new Rng(seed);
-  const b = new Builder();
-  const trunkH = rng.range(2.3, 3.1), R = rng.range(2.9, 3.6);
-  const lean = new V(rng.range(-0.5, 0.5), 0, rng.range(-0.5, 0.5));
-  const tc = C(pal.trunk), td = C(pal.trunkDark);
-  tube(b, [
-    { p: new V(0, -0.3, 0), r: 0.5, c: tc },
-    { p: new V(0, 0.25, 0), r: 0.34, c: tc },
-    { p: new V(lean.x * 0.35, trunkH * 0.6, lean.z * 0.35), r: 0.25, c: td.clone().lerp(tc, 0.4) },
-    { p: new V(lean.x, trunkH + R * 0.6, lean.z), r: 0.13, c: td },
-  ], 7);
-  // two visible limbs
-  for (let i = 0; i < 2; i++) {
-    const a = rng.range(0, Math.PI * 2);
-    tube(b, [
-      { p: new V(lean.x * 0.3, trunkH * 0.55, lean.z * 0.3), r: 0.14, c: tc },
-      { p: new V(lean.x * 0.3 + Math.cos(a) * R * 0.5, trunkH + R * 0.25, lean.z * 0.3 + Math.sin(a) * R * 0.5), r: 0.06, c: td },
-    ], 5);
+/** One continuous gouache mass with scallops around its rim. Its small satellite
+ * marks share the parent's lighting, so they don't turn into a ring of beads. */
+function spray(b: Woodland, rng: Rng, centre: THREE.Vector3, size: THREE.Vector3, ink: THREE.Color[], lowSpec: boolean) {
+  const seed = rng.range(0, 70);
+  const shade = (d: THREE.Vector3) => {
+    const t = d.y + d.x * 0.19 + 0.14 * Math.sin(4 * d.z + seed);
+    return ink[0].clone().lerp(ink[1], smoothstep(-0.65, 0.10, t))
+      .lerp(ink[2], 0.78 * smoothstep(0.24, 0.80, t));
+  };
+  blob(b, centre, size.clone().multiplyScalar(0.92), 2, 0.22, seed, shade, 0.23);
+  const count = Math.ceil(size.x * size.z * (lowSpec ? 13 : 21));
+  for (let i = 0; i < count; i++) {
+    const a = i * 2.39996 + seed, h = 1 - (2*i+1)/count;
+    const r = Math.sqrt(1-h*h);
+    const d = new V(Math.cos(a)*r,h,Math.sin(a)*r);
+    const wobble = 0.09 * Math.sin(3*a + 2*h + seed) + 0.07 * Math.cos(5*a-h);
+    const p = d.clone().multiply(size).multiplyScalar(0.99+wobble).add(centre);
+    const u = new V(-Math.sin(a),rng.range(-0.32,0.32),Math.cos(a)).normalize();
+    const v = d.clone().cross(u).normalize().applyAxisAngle(u,rng.range(-0.46,0.46));
+    const scale = rng.range(0.34,0.59) * Math.sqrt(size.x);
+    b.impression(p,u.multiplyScalar(scale),v.multiplyScalar(scale*0.78),1,d,shade(d));
   }
-  const lobes: Lobe[] = [{ c: new V(lean.x, trunkH + R * 0.74, lean.z), r: new V(R, R * 0.82, R) }];
-  const k = rng.int(3, 5), a0 = rng.range(0, 6.28);
-  for (let i = 0; i < k; i++) {
-    const a = a0 + (i / k) * Math.PI * 2 + rng.range(-0.35, 0.35), dist = R * rng.range(0.66, 0.9), r = R * rng.range(0.5, 0.7);
-    lobes.push({ c: new V(lean.x + Math.cos(a) * dist, trunkH + R * rng.range(0.32, 0.7), lean.z + Math.sin(a) * dist), r: new V(r, r * 0.84, r) });
+}
+
+// Branch tips in metres, followed by the three crown radii. Leaving one
+// unfilled wedge between arms gives each species a readable fork in silhouette.
+const canopies: Record<TreeKind, number[][]> = {
+  oak: [[-2.7,4.5,0.2,2.35,1.25,2.05],[2.2,5.4,0.9,2.9,1.62,2.4],
+    [0.9,6.85,-1.2,2.85,1.8,2.05],[-1.2,5.6,-1.65,1.9,1.24,1.66],[2.8,4.35,-1.15,1.4,0.76,1.35]],
+  lime: [[-1.5,4.8,-0.75,1.76,1.52,1.8],[1.15,5.8,0.65,2.2,2.12,2.0],
+    [-0.55,7.35,0.2,2.05,2.12,1.88],[0.55,8.65,-0.2,1.39,1.43,1.33]],
+  plum: [[-2.0,3.65,0.15,1.95,1.0,1.55],[1.4,4.65,1.35,2.35,1.4,1.95],
+    [0.2,6.0,-0.65,2.6,1.48,2.0],[2.85,4.95,-0.9,1.36,0.84,1.32]],
+};
+
+export function makeBroadleaf(seed: number, kind: TreeKind, lowSpec: boolean) {
+  const rng = new Rng(seed), b = new Woodland(), ink = inks[kind].map(C);
+  const dark = C('#625147'), wood = C('#90735a');
+  branch(b, [[0,-0.3,0,0.48],[0.15,0.5,0.02,0.36],[-0.16,2.1,0.12,0.25],[0.39,3.8,0.05,0.16]], dark, wood);
+  for (const [x,y,z,rx,ry,rz] of canopies[kind]) {
+    const tip = new V(x + rng.range(-0.27, 0.27), y, z + rng.range(-0.27, 0.27));
+    branch(b, [[-0.14,2.0,0.12,0.22],[x * 0.43,y * 0.71,z * 0.34,0.15],[tip.x,y,tip.z,0.048]], dark, wood);
+    spray(b, rng, tip, new V(rx,ry,rz), ink, lowSpec);
   }
-  const rt = R * rng.range(0.5, 0.62);
-  lobes.push({ c: new V(lean.x + rng.range(-0.6, 0.6), trunkH + R * 1.42, lean.z + rng.range(-0.6, 0.6)), r: new V(rt, rt * 0.86, rt) });
-  let yMin = Infinity, yMax = -Infinity;
-  lobes.forEach((l) => { yMin = Math.min(yMin, l.c.y - l.r.y * 0.5); yMax = Math.max(yMax, l.c.y + l.r.y); });
-  dressLobes(b, rng, lobes, pal, { density: 104, leaf: [0.34, 0.58], core: 0.9, lump: 0.16, swayBase: 0.25, yMin, yMax });
   return b.build();
 }
 
-export function makeConifer(seed: number, pal: FoliagePalette): THREE.BufferGeometry {
-  const rng = new Rng(seed);
-  const b = new Builder();
-  const H = rng.range(10.5, 13.5), R = rng.range(2.3, 2.9), tiers = 7;
-  const tc = C(pal.trunk), td = C(pal.trunkDark);
-  const core = C(pal.core), low = C(pal.low), high = C(pal.high), glint = C(pal.glint);
-  tube(b, [
-    { p: new V(0, -0.3, 0), r: 0.36, c: td },
-    { p: new V(0, 0.3, 0), r: 0.24, c: tc },
-    { p: new V(0, H * 0.9, 0), r: 0.04, c: td },
-  ], 6);
-  const p = new V(), u = new V(), v = new V(), facing = new V(), shade = new V(), radial = new V(), n = new V();
-  const col = new THREE.Color();
-  for (let i = 0; i < tiers; i++) {
-    const f = i / (tiers - 1);
-    const y0 = 1.5 + f * (H - 3.4);
-    const rT = R * (1 - f * 0.8) * rng.range(0.92, 1.08);
-    const tierH = ((H - 1.5) / tiers) * 1.5;
-    // dark inner cone
-    const sides = 8, apex = b.vert(p.set(0, y0 + tierH, 0), UP, core.clone().lerp(low, f * 0.4), 0.2);
-    const ring: number[] = [];
-    for (let s = 0; s < sides; s++) {
-      const a = (s / sides) * Math.PI * 2 + i;
-      n.set(Math.cos(a), 0.55, Math.sin(a)).normalize();
-      ring.push(b.vert(p.set(Math.cos(a) * rT * 0.8, y0 - 0.05, Math.sin(a) * rT * 0.8), n, core, 0.2));
-    }
-    for (let s = 0; s < sides; s++) b.tri(apex, ring[(s + 1) % sides], ring[s]);
-    // drooping boughs: elongated dabs laid radially on the tier
-    const count = Math.round(40 + rT * 70);
-    for (let k = 0; k < count; k++) {
-      const a = rng.range(0, Math.PI * 2), rho = rT * Math.sqrt(rng.range(0.1, 1.15));
-      radial.set(Math.cos(a), 0, Math.sin(a));
-      const t = Math.min(1, rho / rT);
-      p.copy(radial).multiplyScalar(rho).setY(y0 + tierH * (1 - t) * 0.82 + rng.range(-0.06, 0.1));
-      u.copy(radial).addScaledVector(UP, -0.5 - t * 0.25).normalize();
-      facing.copy(radial).multiplyScalar(0.5).addScaledVector(UP, 0.8).normalize();
-      v.copy(facing).cross(u).normalize();
-      shade.copy(radial).multiplyScalar(0.62).addScaledVector(UP, 0.62).normalize();
-      col.copy(low).lerp(high, smoothstep(0.3, 1.0, t * 0.8 + f * 0.35 + rng.gauss() * 0.15));
-      const roll = rng.next();
-      if (roll < 0.1) col.lerp(glint, 0.6);
-      else if (roll < 0.28) col.lerp(core, 0.55);
-      const len = rng.range(0.5, 0.82) * (1 - f * 0.2);
-      leaf(b, p, u.clone(), v.clone(), len, len * rng.range(0.4, 0.55), shade.clone(), col.clone(), 0.3 + f * 0.7);
+export function makeConifer(seed: number) {
+  const rng = new Rng(seed), b = new Woodland(), ink = inks.fir.map(C);
+  const height = rng.range(11, 13), wood = C('#866e59');
+  branch(b, [[0,-0.3,0,0.34],[0,1.6,0.04,0.23],[-0.16,height*0.6,0,0.12],[0.24,height,0,0.025]], C('#5a4c40'), wood);
+  // Alternate long and short boughs around the leader. Each has a raised
+  // shoulder and an outboard tip, with sky showing between the lower boughs.
+  for (let j = 0; j < 43; j++) {
+    const t = j / 43, a = j * 2.39996 + seed;
+    const reach = (3.15 - 2.73*t) * rng.range(0.83,1.08);
+    const y = 2.1 + t*(height-2.0);
+    const radial = new V(Math.cos(a),0,Math.sin(a));
+    const across = new V(-radial.z,0,radial.x);
+    const n = radial.clone().multiplyScalar(0.48).add(UP).normalize();
+    const base = ink[0].clone().lerp(ink[1],0.50+0.4*t);
+    for (const side of [-1,0,1]) {
+      const p = radial.clone().multiplyScalar(reach*(side === 0 ? 0.55 : 0.49));
+      p.y = y + (side === 0 ? 0.18 : 0);
+      p.addScaledVector(across,side*reach*0.16);
+      const axis = radial.clone().addScaledVector(across,side*0.54).multiplyScalar(reach*0.76);
+      axis.y = -(0.44 + reach*0.24);
+      const wing = across.clone().multiplyScalar(reach*0.44+0.11);
+      wing.y = 0.23 * side;
+      b.impression(p,axis,wing,2,n,base.clone().lerp(ink[2],side===0 ? 0.23 : 0.06));
     }
   }
-  // spire
-  for (let k = 0; k < 10; k++) {
-    const a = rng.range(0, 6.28);
-    radial.set(Math.cos(a), 0, Math.sin(a));
-    p.copy(radial).multiplyScalar(rng.range(0.05, 0.3)).setY(H - rng.range(0.1, 1.3));
-    u.copy(UP).addScaledVector(radial, 0.35).normalize();
-    v.copy(radial).cross(u).normalize();
-    shade.copy(radial).multiplyScalar(0.6).addScaledVector(UP, 0.6).normalize();
-    leaf(b, p, u.clone(), v.clone(), 0.7, 0.3, shade.clone(), high.clone().lerp(glint, rng.next() * 0.5), 1);
+  return b.build();
+}
+
+// Arching thorn shoots carry overlapping pairs of leaves. Each leaf has a
+// lifted tip. The brush impression carries the smaller paired leaflets.
+export function paintedShrub(seed: number, flowering: boolean, lowSpec: boolean) {
+  const b = new Woodland(), rng = new Rng(seed), ink = inks.thorn.map(C);
+  const wood = C('#877556'), flower = C('#f0dfaf');
+  const stems = lowSpec ? 8 : 11;
+  for (let i = 0; i < stems; i++) {
+    const a = i * 2.39996 + 0.35 * seed, length = rng.range(0.61, 1.32);
+    const along = new V(Math.cos(a) * length,0,Math.sin(a) * length * 1.24 + 0.19);
+    const across = new V(-along.z,0,along.x).normalize();
+    const height = rng.range(0.75,1.36), rise = (t: number) => height * (2.28*t - 1.58*t*t);
+    const locus = (t: number) => along.clone().multiplyScalar(t).setY(rise(t) - 0.025);
+    tube(b, [0,0.32,0.67,1].map(t => ({ p: locus(t), r: 0.032 - 0.024*t, c: wood })), 5);
+    for (let j = 0; j < 8; j++) {
+      const t = 0.15 + j * 0.115, extent = (0.32 + 0.22*Math.sin(Math.PI*t)) * (1.18 - 0.47*t);
+      for (const sign of [-1,1]) {
+        const root = locus(t + 0.021*sign);
+        const axis = across.clone().multiplyScalar(sign*extent).addScaledVector(along, 0.29*extent);
+        axis.y = extent * rng.range(0.10,0.58);
+        const wing = new V(-axis.z,0,axis.x).normalize().multiplyScalar(extent * 0.31);
+        const pigment = ink[0].clone().lerp(ink[1], 0.10 + 0.68*t)
+          .lerp(ink[2], 0.80 * smoothstep(0.54,1.0,root.y + 0.23 * along.x));
+        const n = new V(along.x*0.54,0.65 + t*0.46,along.z*0.54).normalize();
+        const centre = root.clone().addScaledVector(axis,0.48);
+        wing.y = sign * extent * rng.range(0.08,0.24);
+        b.impression(centre,axis.multiplyScalar(0.81),wing.multiplyScalar(1.48),3,n,pigment);
+      }
+    }
+    if (flowering && i % 3 === 0) {
+      const end = locus(0.92);
+      for (let j = 0; j < 5; j++) {
+        const p = end.clone().add(new V(rng.range(-0.12,0.12),rng.range(0.015,0.08),rng.range(-0.11,0.11)));
+        blob(b,p,new V(0.043,0.026,0.047),0,0.14,j,() => flower,0.4);
+      }
+    }
   }
   return b.build();
 }

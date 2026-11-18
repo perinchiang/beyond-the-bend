@@ -104,8 +104,8 @@ this and laps the road with a tap-steering keyboard driver that has human reacti
 | Terrain shape | Procedural height field (fBm + one authored hill and dip), 320×320 grid. The road corridor is cut in with a distance field so verges are flat and embankments ease into the hills. |
 | Road | Hand-authored closed Catmull-Rom spline (25 control points, 1.3 km). A ribbon mesh carries exact lateral coordinates, so edge lines and dashes are analytic and stay crisp. |
 | Terrain paint | Custom GLSL injected into Three's Lambert material: broad gouache washes, brush-dab edges, short grass ticks, dry-brush grain, painted form shading from terrain curvature, earth shoulders, drifting cloud shadows, and a stippled dissolve into paper at the world edge. |
-| Textures | World-space noise and brush strokes are baked at startup. Birch and shrub foliage share a Canvas2D atlas of four leaf impressions. |
-| Vegetation, rocks | Broadleaf crowns and conifers use procedural geometry. Birches and shrubs carry painted sprays. Fieldstones have weathered rims, moss and grass at their feet. Geometry is instanced in 100 m chunks. |
+| Textures | World-space noise and brush strokes are baked at startup. Two small Canvas2D atlases hold birch sprays and the broadleaf, fir and thorn brush shapes. |
+| Vegetation, rocks | Branching oak, lime and plum crowns, open fir boughs and arching thorn shoots use species-specific silhouettes and painted edges. Low fieldstone ledges share a broken mineral seam across their faces, with moss and grass at the base. Geometry is instanced in 100 m chunks. |
 | Roadside | Delineator posts, corner chevrons (placed from spline curvature), post-and-rail fences — one merged mesh. |
 | Car | `tools/blender/build_car.py`: a lofted hatchback shell from hand-tuned cross-sections, boolean wheel wells, arch flares, inset glazing, lamps, bumpers, spoiler, lamp pod, separate spoked wheels (~6k triangles). Colours are assigned in code by material name. |
 | Light | One warm directional sun with a texel-snapped PCF shadow map, cool hemisphere fill. Foliage is lit by its volume normals and does not receive shadow-map shadows. |

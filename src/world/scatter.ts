@@ -5,8 +5,8 @@ import { HeightField } from './heightfield';
 import { ROAD_HALF_WIDTH, Track } from './track';
 import { edgeDistance, type GroundPatch } from './terrain';
 import { PaintShared, paintMaterial } from '../render/paint';
-import { FOLIAGE, PropBuilder, makeBroadleaf, makeConifer, makeFlower, makeTuft } from './flora';
-import { birchCrown, birchTrunk, paintedLeafMaterials, paintedShrub, fieldstone, STUDY_TREE, STUDY_STONE } from './paintedFlora';
+import { woodlandBrushes, PropBuilder, makeBroadleaf, makeConifer, makeFlower, paintedShrub, makeTuft } from './flora';
+import { birchCrown, birchTrunk, paintedLeafMaterials, fieldstone, STUDY_TREE, STUDY_STONE } from './paintedFlora';
 import { meadowMasks } from './meadow';
 
 const CHUNK = 100; // metres — instances are batched per chunk so off-screen groups are culled
@@ -65,7 +65,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
       transformed.y += aSway * flutter * 0.008;
     }
   `;
-  const foliageMat = paintMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), shared, {
+  const foliageMat = paintMaterial(new THREE.MeshLambertMaterial({ map: woodlandBrushes(), alphaTest: 0.42, alphaToCoverage: true, vertexColors: true, side: THREE.DoubleSide }), shared, {
     key: 'foliage',
     vertexPars: 'attribute float aSway;',
     vertexMain: swayVertex,
@@ -87,11 +87,25 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   });
   const rockMat = paintMaterial(new THREE.MeshLambertMaterial({ vertexColors: true }), shared, {
     key: 'rock',
+    vertexPars: 'varying vec3 vStone;',
+    vertexMain: 'vStone = position;',
+    fragPars: 'varying vec3 vStone;',
     fragColor: /* glsl */ `
       {
-        float n = texture2D(uNoise, vWorldPos.xz / 3.1 + vWorldPos.y * 0.21).b;
-        float s = texture2D(uNoise, vWorldPos.xz / vec2(9.0, 2.2) + vWorldPos.y * 0.4).a;
-        diffuseColor.rgb *= 1.0 + (n - 0.5) * 0.16 + (s - 0.5) * 0.10;
+        vec4 grain = texture2D(uNoise, vStone.xz * 0.17 + vStone.y * 0.08);
+        vec2 face = vec2(vStone.z + 0.37*vStone.x, vStone.y - 0.12*vStone.x);
+        vec4 fleck = texture2D(uNoise, face * vec2(0.41,0.36));
+        float bed = vStone.y - 0.13*vStone.x + 0.065*vStone.z + 0.068*(grain.r-0.5);
+        float feather = max(0.012, fwidth(bed));
+        float seam = 1.0 - smoothstep(0.014, 0.014 + feather, abs(bed - 0.38));
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.73,0.65,0.51), seam * smoothstep(0.46,0.72,grain.g) * 0.47);
+        float moss = (1.0-smoothstep(0.16,0.42,bed)) * smoothstep(0.37,0.60,grain.r);
+        diffuseColor.rgb = mix(diffuseColor.rgb,vec3(0.27,0.33,0.17),moss * 0.72);
+        float split = smoothstep(0.11,0.18,bed) * (1.0-smoothstep(0.26,0.37,bed+0.055*fleck.r));
+        diffuseColor.rgb = mix(diffuseColor.rgb,vec3(0.27,0.22,0.28),split*(0.17+0.28*grain.r));
+        float lichen = smoothstep(0.61,0.75,grain.g + 0.15*(grain.b-0.5)) * smoothstep(0.26,0.48,bed);
+        diffuseColor.rgb = mix(diffuseColor.rgb,vec3(0.52,0.53,0.34),lichen*0.58);
+        diffuseColor.rgb *= 0.89 + 0.13*grain.a + 0.11*smoothstep(0.37,0.65,fleck.r);
       }
     `,
   });
@@ -100,6 +114,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   // ---------- model library ----------
   const painted = paintedLeafMaterials(shared, swayVertex);
   const trunk = birchTrunk();
+  const tufts = [makeTuft(1), makeTuft(2), makeTuft(3)];
   const grassMat = paintMaterial(new THREE.MeshLambertMaterial({ vertexColors: true, side: THREE.DoubleSide }), shared, {
     key: 'meadow-grass', vertexPars: 'attribute float aSway;', vertexMain: swayVertex, volumeNormals: true,
     fragPars: meadowMasks,
@@ -111,10 +126,10 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     `,
   });
   const lib = {
-    oak: [makeBroadleaf(11, FOLIAGE.oak), makeBroadleaf(12, FOLIAGE.oak)],
-    lime: [makeBroadleaf(21, FOLIAGE.lime), makeBroadleaf(22, FOLIAGE.lime)],
-    plum: [makeBroadleaf(31, FOLIAGE.plum)],
-    fir: [makeConifer(41, FOLIAGE.fir), makeConifer(42, FOLIAGE.fir)],
+    oak: [makeBroadleaf(11, 'oak', lowSpec), makeBroadleaf(12, 'oak', lowSpec)],
+    lime: [makeBroadleaf(21, 'lime', lowSpec), makeBroadleaf(22, 'lime', lowSpec)],
+    plum: [makeBroadleaf(31, 'plum', lowSpec)],
+    fir: [makeConifer(41), makeConifer(42)],
     birch: [birchCrown(lowSpec)],
     bush: [paintedShrub(61, false, lowSpec), paintedShrub(62, false, lowSpec)],
     bloom: [paintedShrub(71, true, lowSpec)],
@@ -122,7 +137,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   };
   type Species = keyof typeof lib;
 
-  const trees = new Batcher(), rocks = new Batcher(), cover = new Batcher();
+  const woodyPlants = new Batcher(), rocks = new Batcher(), cover = new Batcher();
   const bark = new Batcher(), brushes = new Batcher(), grass = new Batcher();
   const patches: GroundPatch[] = [];
   const placed: { x: number; z: number; r: number }[] = [];
@@ -161,20 +176,31 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
     } else {
       batch.add(`${sp}${vi}`, geos[vi], m, tint);
     }
+    if (sp === 'rock') {
+      // A staggered tuft or two catches on the broken lip. Sample the terrain
+      // under each tuft so the blades stay rooted on the sloping outcrops.
+      for (const [dx, dz, size] of [[0.60, -0.65, 0.78], [0.76, -0.44, 0.60], [-0.42, 0.87, 0.68]]) {
+        const foot = new THREE.Vector3(dx, 0, dz).applyMatrix4(m);
+        foot.y = hf.height(foot.x, foot.z) - 0.025;
+        const matrix = m.clone().scale(new THREE.Vector3(size, size, size)).setPosition(foot);
+        grass.add(`tuft${vi}`, tufts[vi], matrix, new THREE.Color('#91a268'));
+        stats.tufts++;
+      }
+    }
   };
 
   const tree = (sp: Species, x: number, z: number, scale: number, radius = 3.2, roadGap = 7.5, edgeLimit = -13): boolean => {
     // Leave an opening in the hairpin plantation to reveal the exit meadow.
     if (Math.hypot((x - 68) / 12, (z + 136) / 15) < 1) return false;
     if (!ok(x, z, roadGap, edgeLimit) || !free(x, z, radius * scale * 0.72)) return false;
-    put(trees, sp, x, z, scale);
+    put(woodyPlants, sp, x, z, scale);
     placed.push({ x, z, r: radius * scale * 0.72 });
     stats.trees++;
     return true;
   };
   const bush = (x: number, z: number, scale: number, bloom = false) => {
     if (!ok(x, z, 2.4) || !free(x, z, 0.5)) return;
-    put(brushes, bloom ? 'bloom' : 'bush', x, z, scale, 0.06, 0.05);
+    put(woodyPlants, bloom ? 'bloom' : 'bush', x, z, scale, 0.06, 0.05);
     patches.push({ x, z, radius: 1.8 * scale });
     stats.bushes++;
   };
@@ -304,7 +330,6 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   });
 
   // ---------- 5. ground cover: grass tufts in drifts, wildflowers in patches ----------
-  const tufts = [makeTuft(1), makeTuft(2), makeTuft(3)];
   const tuftDeep = new THREE.Color('#4a8a48'), tuftMid = new THREE.Color('#6fa548'), tuftLight = new THREE.Color('#b5cf62'), tuftDry = new THREE.Color('#b9c468');
   const tuftStep = lowSpec ? 2.4 : 1.6;
   for (let z = -172; z <= 172; z += tuftStep) for (let x = -172; x <= 172; x += tuftStep) {
@@ -355,7 +380,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
 
   // Foliage casts shadows but is lit purely by its volume normals: letting leaf cards shadow
   // each other breaks the crown into noisy confetti instead of one soft painted form.
-  trees.flush(foliageMat, true, false, group);
+  woodyPlants.flush(foliageMat, true, false, group);
   bark.flush(painted.bark, true, false, group);
   brushes.flush(painted.leaves, true, false, group);
   grass.flush(grassMat, false, true, group);

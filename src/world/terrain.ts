@@ -121,6 +121,12 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
         vec2 fields = meadowMasks(p, cutEdge);
         g = mix(g, mix(cDry, cLight, 0.06 + 0.15*nB.r), fields.x * 0.92);
         g = mix(g, mix(cCool, cDeep, 0.25 + 0.30*nB.g), fields.y * 0.72);
+        // Broad overlapping mower passes follow the southern headland and
+        // taper out at its grassy margin. Other fields keep their open wash.
+        float arc = p.y + 0.115 * p.x + 0.0017 * (p.x + 24.0) * (p.x + 24.0);
+        float swath = sin(arc * 0.52 + 0.55*nB.r + 0.18*dab);
+        float cut = smoothstep(-0.78,0.62,swath) * fields.x;
+        g = mix(g, cLight * vec3(0.94,0.95,0.85), cut * (0.55 + 0.12*nB.g));
         // --- Layer 2: quiet medium variation — cool drifts and long wind-swept dry bands.
         g = mix(g, cCool, smoothstep(0.56, 0.78, nB.b) * 0.15);
         float dryBand = smoothstep(0.60, 0.80, nA.a);
@@ -134,8 +140,8 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
         g *= 1.0 + (dab - 0.30) * 0.10 + (dab2 - 0.30) * 0.06;
         float tickD = max(s1.r, s2.r * 0.85) * (0.45 + 0.55 * smoothstep(0.36, 0.60, nB.r));
         float tickL = max(s1.g, s2.g * 0.85) * (0.40 + 0.60 * smoothstep(0.40, 0.64, nB.g));
-        g = mix(g, g * vec3(0.66, 0.80, 0.74), tickD * 0.62);
-        g = mix(g, g * 1.17 + vec3(0.03, 0.04, 0.0), tickL * 0.62);
+        g = mix(g, g * vec3(0.66, 0.80, 0.74), tickD * (0.46 - 0.19*fields.x));
+        g = mix(g, g * 1.17 + vec3(0.03, 0.04, 0.0), tickL * (0.48 - 0.18*fields.x));
 
         // --- Layer 5: paper tooth and dry-brush streaks (finest scale, mip-filtered).
         g *= 1.0 + (nC.b - 0.5) * 0.085 + (nC.a - 0.5) * 0.075;

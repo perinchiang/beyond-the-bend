@@ -9,7 +9,12 @@ vec2 meadowMasks(vec2 p, float torn) {
   float corner = clamp(0.5 + 0.5 * (longEdge - end) / 19.0, 0.0, 1.0);
   float outline = mix(end, longEdge, corner) + 19.0 * corner * (1.0 - corner);
   float hay = 1.0 - smoothstep(-1.4, 2.3, outline + torn);
+  // A narrow uncut strip runs along the uphill boundary and dies away
+  // before the road. The dry passes stop at this blue-green margin.
+  float margin = field.y + 0.095 * field.x + 3.4 * sin(field.x / 28.0) + 33.0;
+  float headland = (1.0 - smoothstep(1.2, 5.8, abs(margin + 0.4*torn)))
+    * (1.0 - smoothstep(58.0, 79.0, abs(field.x)));
   float bank = smoothstep(116.0, 121.0, p.y + 0.09 * p.x + torn);
-  return vec2(hay, bank);
+  return vec2(hay, max(bank, headland));
 }
 `;

@@ -1,7 +1,8 @@
 import * as THREE from 'three';
+import { smoothstep } from '../core/noise';
 import { Rng } from '../core/rng';
 import { PaintShared, paintMaterial } from '../render/paint';
-import { Builder, blob, tube } from './flora';
+import { Builder, tube } from './flora';
 
 // Surveyed feet of the existing birch and stone on the right of the southern avenue.
 export const STUDY_TREE = new THREE.Vector2(-11.74, 120.79);
@@ -57,7 +58,7 @@ function leafBrushes() {
     for (let i = 0; i < 72; i++) {
       const a = rng.range(0, Math.PI * 2), d = Math.sqrt(rng.next());
       const x = Math.cos(a) * d * 45, y = Math.sin(a) * d * 41 + 0.22 * x;
-      let size = rng.range(3.4, 8.7) * (1.18 - 0.32 * d);
+      const size = rng.range(3.4, 8.7) * (1.18 - 0.32 * d);
       mark(x, y, size, size * 0.68, a * 0.38 + 0.72, rng.int(216, 255));
     }
     ctx.restore();
@@ -81,18 +82,10 @@ const crowns = [
 ];
 
 type BrushPalette = readonly [string, string, string];
-function crownGeometry(volumes: number[][], seed: number, palette: BrushPalette, density: number, brushSize: number, shrub?: { flowering: boolean }) {
+function crownGeometry(volumes: number[][], seed: number, palette: BrushPalette, density: number, brushSize: number) {
   const b = new Builder(), uv: number[] = [], rng = new Rng(seed);
   const [cool, mid, lit] = palette.map(C);
   for (const [x, y, z, rx, ry, rz] of volumes) {
-    if (shrub) {
-      // A low mass underneath the open sprays holds the shrub together in motion.
-      // Sample the opaque centre of one impression for these inner vertices.
-      const first = b.pos.length / 3;
-      blob(b, new V(x, y * 0.59, z + 0.12 * rz), new V(rx * 0.58, ry * 0.53, rz * 0.61), 1, 0.27, seed,
-        dir => cool.clone().lerp(mid, 0.16 + 0.20 * dir.y), 0.20);
-      for (let i = first; i < b.pos.length / 3; i++) uv.push(0.25, 0.76);
-    }
     const count = Math.ceil(rx * rz * density);
     for (let i = 0; i < count; i++) {
       const h = 1 - (2 * i + 1) / count, a = i * 2.39996 + rng.range(-0.17, 0.17);
@@ -109,15 +102,9 @@ function crownGeometry(volumes: number[][], seed: number, palette: BrushPalette,
       u.applyAxisAngle(n, rng.range(-0.7, 0.7));
       const v = n.clone().cross(u).applyAxisAngle(u, rng.range(-0.65, 0.65));
       if (fringe && v.y < 0) v.negate();
-      let size = rng.range(0.40, 0.61) * brushSize;
+      const size = rng.range(0.40, 0.61) * brushSize;
       const light = THREE.MathUtils.clamp(0.48 + 0.24 * h - 0.19 * n.z + 0.12 * n.x + 0.08 * Math.sin(centre.z * 2 + centre.y), 0, 1);
       const pigment = cool.clone().lerp(mid, Math.min(1, light * 1.7)).lerp(lit, Math.max(0, light - 0.45) * 1.75);
-      // Sun-facing sprays flower together at the ends of the long bough.
-      if (shrub?.flowering && centre.z > 0.25 && h > 0.25 && i % 5 === 1) {
-        size *= 0.58;
-        centre.addScaledVector(n, 0.16);
-        pigment.set('#eddcb8');
-      }
       const cell = fringe ? 3 : rng.int(0, 2), first = b.pos.length / 3;
       for (const [dx, dy] of [[-1,-1],[1,-1],[1,1],[-1,1]]) {
         b.vert(centre.clone().addScaledVector(u, dx * size).addScaledVector(v, dy * size),
@@ -135,17 +122,6 @@ function crownGeometry(volumes: number[][], seed: number, palette: BrushPalette,
 
 export function birchCrown(lowSpec: boolean) {
   return crownGeometry(crowns, 352, ['#668765', '#acc45f', '#e3df86'], lowSpec ? 66 : 106, lowSpec ? 1.11 : 1);
-}
-
-export function paintedShrub(seed: number, flowering: boolean, lowSpec: boolean) {
-  // A sloping bank of stems, with a low trailing end and light between sprays.
-  const height = seed % 2 === 0 ? 0.76 : 0.95;
-  const volumes = [[0, height * 0.7, 0, 0.86, height * 0.65, 1.14],
-    [-0.28, height * 0.88, 0.65, 0.56, height * 0.61, 0.77],
-    [0.27, height * 0.39, -0.84, 0.55, height * 0.46, 0.63],
-    [-0.48, height * 0.31, 1.18, 0.37, height * 0.36, 0.40]];
-  return crownGeometry(volumes, seed, flowering ? ['#526f5e','#88a75d','#cfcd83'] :
-    ['#486e59','#749758','#b6c775'], lowSpec ? 64 : 100, lowSpec ? 0.78 : 0.68, { flowering });
 }
 
 export function birchTrunk() {
@@ -178,54 +154,48 @@ export function paintedLeafMaterials(shared: PaintShared, swayVertex: string) {
   return { bark: woodMat, leaves };
 }
 
-// One low fieldstone with a sloping ochre top, a lavender break and mossy foot.
+// Bedded outcrops: one long exposed ledge, one broken shoulder and a partly
+// buried chip. All three share the same bedding plane in the material.
 export function fieldstone(variant: number) {
-  const b = new Builder();
-  const ring = [[-0.78,-0.92],[-0.19,-1.32],[0.48,-0.96],[0.74,0.05],[0.55,0.93],[-0.2,1.23],[-0.71,0.55]];
-  const top = [[-0.55,0.29,-0.65],[-0.16,0.39,-0.96],[0.32,0.46,-0.66],
-    [0.46,0.53,-0.03],[0.28,0.36,0.69],[-0.18,0.21,0.94],[-0.53,0.20,0.35]]
-    .map(([x,y,z]) => new V(x,y,z));
-  const face = (a: THREE.Vector3, c: THREE.Vector3, d: THREE.Vector3, pigment: THREE.Color) => {
-    const n = c.clone().sub(a).cross(d.clone().sub(a)).normalize();
-    const ids = [a,c,d].map(p => {
-      const weathered = new V(p.x * 0.9, p.y * 2.8 + 0.25, p.z * 0.7).normalize();
-      const moss = 0.72 * (1 - THREE.MathUtils.smoothstep(p.y + p.z * 0.07, 0, 0.37));
-      return b.vert(p, weathered.lerp(n, 0.46).normalize(), pigment.clone().lerp(C('#89965b'), moss));
-    });
-    b.tri(ids[0], ids[1], ids[2]);
-  };
-  const lip = top.map((p, i) => new V(
-    0.37 * ring[i][0] + 0.63 * p.x, p.y * 0.73, 0.37 * ring[i][1] + 0.63 * p.z));
-  for (let i = 0; i < ring.length; i++) {
-    const j = (i + 1) % ring.length, a = new V(ring[i][0], -0.14, ring[i][1]), d = new V(ring[j][0], -0.14, ring[j][1]);
-    const side = C(i < 3 ? '#a09a99' : '#8f9395');
-    face(a, lip[i], lip[j], side); face(a, lip[j], d, side);
-    const bevel = side.clone().lerp(C('#c6bea6'), 0.52);
-    face(lip[i], top[i], top[j], bevel); face(lip[i], top[j], lip[j], bevel);
-    face(top[j], top[i], new V(0.04, 0.51, -0.07), C(i < 3 ? '#bdb8a5' : '#c9c1aa'));
-  }
-  // Three tufts grow along the damp seam. Their bases fall inside the
-  // footprint so the first blades emerge from behind the stone.
-  const rng = new Rng(194);
-  for (const [x,z] of [[-0.63,-0.51],[-0.49,0.74],[0.30,0.92]]) {
-    for (let blade = 0; blade < 8; blade++) {
-      const angle = rng.range(0, Math.PI * 2);
-      const u = new V(Math.cos(angle), 0, Math.sin(angle));
-      const side = new V(-u.z, 0, u.x);
-      const root = new V(x + rng.range(-0.15, 0.15), -0.04, z + rng.range(-0.12, 0.12));
-      const tip = root.clone().addScaledVector(u, rng.range(0.14, 0.36));
-      tip.y += rng.range(0.19, 0.38);
-      const normal = new V(0, 1, 0);
-      const i = b.vert(root.clone().addScaledVector(side, -0.035), normal, C('#69854f'));
-      b.vert(root.clone().addScaledVector(side, 0.035), normal, C('#69854f'));
-      b.vert(tip, normal, C('#a7af63'));
-      b.tri(i, i + 1, i + 2);
-      b.tri(i + 2, i + 1, i);
+  const b = new Builder(), rng = new Rng(429 + variant);
+  const foot = C('#777d71'), side = C('#958795'), cap = C('#bbb7a6');
+  const ledge = (x: number, z: number, width: number, length: number, height: number, lean: number) => {
+    const outline = [[-0.91,-0.53],[-0.62,-0.91],[-0.18,-1],[0.40,-0.92],[0.83,-0.65],
+      [1,-0.20],[0.96,0.49],[0.66,0.82],[0.24,1],[-0.35,0.94],[-0.76,0.71],[-1,0.21]];
+    const stations = outline.map(([u,v]) => ({
+      u: u*rng.range(0.87,1.09), v: v*rng.range(0.91,1.08),
+      crown: 0.84 + 0.17*u - 0.09*v + rng.range(-0.10,0.11),
+    }));
+    const loops: number[][] = [];
+    for (const [radius,elevation,ny] of [[0.91,-0.34,-0.12],[1.0,0.15,0.12],[0.97,0.58,0.30],[0.78,0.83,0.82],[0.43,0.93,1.8]]) {
+      const loop = [];
+      for (const {u,v,crown} of stations) {
+        const p = new V(x + width*(radius*u + lean*elevation),height*crown*elevation,z + length*(radius*v - 0.13*elevation));
+        const n = new V(u / width,ny / height,v / length).normalize();
+        const pigment = foot.clone().lerp(side,smoothstep(0.02,0.39,elevation)).lerp(cap,smoothstep(0.44,1,elevation)*0.92);
+        loop.push(b.vert(p,n,pigment));
+      }
+      const lower = loops[loops.length-1];
+      if (lower) for (let i=0;i<loop.length;i++) {
+        const j = (i+1)%loop.length;
+        b.tri(lower[i],loop[i],loop[j]); b.tri(lower[i],loop[j],lower[j]);
+      }
+      loops.push(loop);
     }
+    const top = b.vert(new V(x+width*lean,height*0.97,z-length*0.15),new V(-0.08,1,0.13).normalize(),cap);
+    const rim = loops[loops.length-1];
+    for (let i=0;i<rim.length;i++) b.tri(rim[(i+1)%rim.length],rim[i],top);
+  };
+  if (variant === 0) {
+    ledge(-0.16,0.06,0.65,1.14,0.72,0.17);
+    ledge(0.46,-0.33,0.34,0.70,0.33,0.10);
+  } else if (variant === 1) {
+    ledge(0.10,-0.24,0.93,0.91,0.93,-0.17);
+    ledge(-0.48,0.38,0.49,0.71,0.46,-0.13);
+  } else {
+    ledge(-0.18,-0.11,0.55,1.26,0.46,0.21);
+    ledge(0.48,0.23,0.30,0.79,0.28,0.10);
+    ledge(0.83,0.60,0.19,0.31,0.18,0.10);
   }
-  const stone = b.build();
-  // Outcrops, flat slabs and rounded shoulders retain different profiles at driving scale.
-  if (variant === 1) stone.scale(1.20, 1.42, 0.83);
-  if (variant === 2) stone.scale(0.88, 0.78, 1.18);
-  return stone;
+  return b.build();
 }
