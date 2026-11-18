@@ -25,6 +25,8 @@ npm run car          # regenerate public/models/car.glb with Blender (needs `ble
 | `T` | miniature lens on/off |
 | `H` | hide the legend |
 
+The upper-left HUD shows speed in km/h and a north-up road map. The red arrow tracks the car, including off-road, and the diamond marks Foothill Station. Tap **Map** to collapse it. The upper-right **Debug** selector lists the build ID and travel points for both maps.
+
 The main entrance starts in Close view at the village exit. Follow the hayfield road through its broad bend to the clock tower at Foothill Station (306 m), then keep driving to return through the hills. Reload to start the trip again. Use `?route=circuit` for the earlier road layout in gouache. For the earlier diorama, use `?study=original`. The [Close comparison](public/studies/close.html) includes the oil, print and gouache studies.
 
 URL options: `?cam=free`, `?preset=0|1|2`, `?s=<metres along the road>`, `?q=low|high`,

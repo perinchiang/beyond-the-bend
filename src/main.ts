@@ -11,6 +11,7 @@ import { readStyleStudy } from './render/styleStudy';
 import { PostFX } from './render/post';
 import { CameraRig, DRIVE_PRESETS, DEFAULT_PRESET } from './camera';
 import { Car } from './vehicle/car';
+import { createDrivingHud } from './input/drivingHud';
 import { TouchControls } from './input/touch';
 
 const params = new URLSearchParams(location.search);
@@ -106,9 +107,18 @@ const touch = new TouchControls(
   () => { rig.toggleMode(); announceCamera(); },
   () => { rig.cyclePreset(); announceCamera(); },
 );
-const destination = document.getElementById('destination')!;
-destination.hidden = !scenic || params.get('hud') === '0';
 let arrived = false;
+const drivingHud = createDrivingHud(track, scenic, s => {
+  keys.clear();
+  touch.reset();
+  placeAt(s);
+  rig.setDrive();
+  rig.update(0, car.position, car.heading, true);
+  arrived = false;
+  drivingHud.destination.textContent = 'Foothill Station';
+  announceCamera();
+});
+drivingHud.hide(params.get('hud') === '0');
 let toastTimer = 0;
 function announceCamera(hint?: string) {
   touch.updateCamera(rig.mode, rig.preset.name);
@@ -122,11 +132,12 @@ function announceCamera(hint?: string) {
   toastTimer = window.setTimeout(() => toast.classList.remove('show'), 1600);
 }
 addEventListener('keydown', (e) => {
-  if (e.repeat) return;
+  if (e.repeat || e.target instanceof HTMLSelectElement) return;
+  if (e.target instanceof HTMLButtonElement && (e.code === 'Space' || e.code === 'Enter')) return;
   keys.add(e.code);
   if (e.code === 'KeyH') {
     hud.classList.toggle('hidden');
-    destination.hidden = !scenic || hud.classList.contains('hidden');
+    drivingHud.hide(hud.classList.contains('hidden'));
   }
   if (e.code === 'KeyT') post.setTilt(post.tilt > 0 ? 0 : 1);
   if (e.code === 'KeyC') { rig.toggleMode(); announceCamera(); }
@@ -214,7 +225,7 @@ function frame(now: number) {
   car.update(dt, input);
   if (!arrived && journey?.atStation(car.x, car.z)) {
     arrived = true;
-    destination.textContent = 'Arrived at Foothill Station';
+    drivingHud.destination.textContent = 'Arrived at Foothill Station';
   }
   rig.orbit(((keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0)) * dt * 1.4, ((keys.has('KeyR') ? 1 : 0) - (keys.has('KeyF') ? 1 : 0)) * dt * 0.9);
   if (keys.has('KeyZ')) rig.zoom(Math.exp(-dt * 1.3));
@@ -240,6 +251,7 @@ function frame(now: number) {
   lens.inner += ((rig.mode === 'drive' ? 0.27 : 0.17) - lens.inner) * kl;
   post.setFocus(lens.focus, lens.inner);
   post.render(scene, rig.camera);
+  drivingHud.update(now, car.x, car.z, car.heading, car.speed);
 
   if (showStats) {
     frames++; acc += dt;
@@ -253,6 +265,7 @@ function frame(now: number) {
 }
 
 car.load(import.meta.env.BASE_URL + 'models/car.glb').catch((e) => console.warn('[car] model not loaded', e)).finally(() => {
+  drivingHud.travel.disabled = false;
   placeAt(startS);
   initCamera();
   announceCamera();
