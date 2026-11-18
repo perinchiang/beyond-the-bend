@@ -11,6 +11,7 @@ export function journeyDrive(
   village: boolean,
   circuit: boolean,
   notify: (message: string) => void,
+  drivingTime: () => number,
 ) {
   const book = logbook(),
     region = track.region;
@@ -23,7 +24,7 @@ export function journeyDrive(
   const journal = document.querySelector<HTMLElement>('#journal')!;
   const gate = track.length * PASS_FRACTION;
   const gates = SPRINT_GATES.map((f) => f * track.length);
-  let race: { elapsed: number; drift: number; checkpoint: number } | undefined;
+  let race: { startedAt: number; drift: number; checkpoint: number } | undefined;
   let lastState: Progress | undefined, lastGoal: number | undefined;
   let pending = false,
     waitingForRice = false;
@@ -47,7 +48,7 @@ export function journeyDrive(
     const url = new URL(location.href);
     for (const k of ['study', 'route', 's', 'x', 'z', 'cam']) url.searchParams.delete(k);
     if (next) url.searchParams.set('route', next);
-    location.assign(url.href);
+    void book.travel(url);
   }
   const passes = document.querySelector<HTMLSelectElement>('#passes')!;
   passes.onchange = () => {
@@ -150,7 +151,7 @@ export function journeyDrive(
       } else if (station) {
         line = 'Arrived at Foothill Station';
         if (p.delivered) actionView('return', 'Take village mail');
-      } else if (!p.delivered) line = 'Foothill Station';
+      }
       if (!p.job && near(227, 11)) {
         line = 'Old hill road';
         actionView('circuit', 'Enter hill sprint');
@@ -209,6 +210,10 @@ export function journeyDrive(
           actionView('ridge', 'Enter Snowbell Ridge');
         }
       }
+      if (!p.job && !p.delivered) {
+        target = TOWN_EXIT_S;
+        if (!context) line = 'Pick up the parcel at the village post office';
+      }
     } else if (region) {
       const index = regions.indexOf(region),
         next = regions[index + 1];
@@ -218,11 +223,12 @@ export function journeyDrive(
       if (region === 'arcade') music = 3;
     } else if (circuit) {
       if (race) {
+        const elapsed = (drivingTime() - race.startedAt) / 1000;
         target = gates[race.checkpoint];
         if (near(target, 10)) {
           race.checkpoint++;
           if (race.checkpoint === gates.length) {
-            const seconds = race.elapsed,
+            const seconds = elapsed,
               drift = race.drift;
             void edit((p) => {
               if (!p.best || seconds < p.best) p.best = seconds;
@@ -234,7 +240,7 @@ export function journeyDrive(
         }
         if (race) {
           target = gates[race.checkpoint];
-          line = 'Gate ' + (race.checkpoint + 1) + '/3 · ' + race.elapsed.toFixed(1) + ' s';
+          line = 'Gate ' + (race.checkpoint + 1) + '/3 · ' + elapsed.toFixed(1) + ' s';
         }
       } else {
         target = near(0, 15) ? undefined : 0;
@@ -299,7 +305,7 @@ export function journeyDrive(
           p.visits = Math.max(p.visits, index + 1);
         });
         visit(regions[index + 1]);
-      } else if (key === 'race') race = { elapsed: 0, drift: 0, checkpoint: 0 };
+      } else if (key === 'race') race = { startedAt: drivingTime(), drift: 0, checkpoint: 0 };
       action.blur();
       sense(performance.now());
     } finally {
@@ -308,11 +314,11 @@ export function journeyDrive(
   };
   garage();
   return {
-    update(dt: number, now: number) {
-      if (race) {
-        race.elapsed += dt;
-        if (Math.abs(car.slip) > 0.09) race.drift += Math.abs(car.speed) * dt;
-      }
+    travel: book.travel,
+    recordSlide(dt: number) {
+      if (race && Math.abs(car.slip) > 0.09) race.drift += Math.abs(car.speed) * dt;
+    },
+    update(now: number) {
       if (now - lastUpdate >= 95) sense(now);
     },
     get goal() {

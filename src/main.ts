@@ -121,7 +121,21 @@ initCamera();
 const audio = drivingAudio(document.querySelector<HTMLInputElement>('#sound-toggle')!);
 const pauseMenu = document.querySelector<HTMLDialogElement>('#pause-menu')!;
 const pauseButton = document.querySelector<HTMLButtonElement>('#pause-toggle')!;
-let pausedAt = 0, pausedTime = 0;
+let pausedAt = document.hidden ? performance.now() : null;
+let pausedTime = 0;
+function drivingTime() {
+  return (pausedAt ?? performance.now()) - pausedTime;
+}
+function syncPause() {
+  const now = performance.now();
+  if (pauseMenu.open || document.hidden) {
+    pausedAt ??= now;
+  } else if (pausedAt !== null) {
+    pausedTime += now - pausedAt;
+    last = now;
+    pausedAt = null;
+  }
+}
 const keys = new Set<string>();
 const hud = document.getElementById('hud')!;
 const hudCam = document.getElementById('hud-cam')!;
@@ -131,7 +145,7 @@ const touch = new TouchControls(
   () => { rig.toggleMode(); announceCamera(); },
   () => { rig.cyclePreset(); announceCamera(); },
 );
-const trip = journeyDrive(track, car, scenic, !styleParam && !region && !scenic, message => announceCamera(message));
+const trip = journeyDrive(track, car, scenic, !styleParam && !region && !scenic, message => announceCamera(message), drivingTime);
 const drivingHud = createDrivingHud(track, scenic, s => {
   keys.clear();
   touch.reset();
@@ -140,7 +154,7 @@ const drivingHud = createDrivingHud(track, scenic, s => {
   rig.update(0, car.position, car.heading, true);
   trip.reset();
   announceCamera();
-});
+}, trip.travel);
 drivingHud.hide(params.get('hud') === '0');
 let toastTimer = 0;
 function announceCamera(hint?: string) {
@@ -158,21 +172,23 @@ pauseButton.addEventListener('click', () => {
   keys.clear();
   touch.reset();
   drag = null;
-  pausedAt = performance.now();
   audio.setPaused(true);
   pauseMenu.showModal();
+  syncPause();
 });
 document.getElementById('resume-drive')!.addEventListener('click', () => pauseMenu.close());
 pauseMenu.addEventListener('close', () => {
-  last = performance.now();
-  pausedTime += last - pausedAt;
-  pausedAt = 0;
+  syncPause();
   audio.setPaused(false);
   pauseButton.blur();
 });
 addEventListener('keydown', (e) => {
-  if (pausedAt || e.repeat || e.target instanceof HTMLSelectElement) return;
+  if (pausedAt !== null || e.repeat || e.target instanceof HTMLSelectElement) return;
   if (e.target instanceof HTMLButtonElement && (e.code === 'Space' || e.code === 'Enter')) return;
+  if (e.target instanceof HTMLButtonElement &&
+      ['KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowLeft', 'ArrowDown', 'ArrowRight'].includes(e.code)) {
+    e.target.blur();
+  }
   if (e.code === 'KeyE' && rig.mode === 'drive') trip.interact();
   keys.add(e.code);
   if (e.code === 'KeyH') {
@@ -186,7 +202,7 @@ addEventListener('keydown', (e) => {
 });
 addEventListener('keyup', (e) => keys.delete(e.code));
 addEventListener('blur', () => { keys.clear(); drag = null; });
-document.addEventListener('visibilitychange', () => { if (document.hidden) { keys.clear(); drag = null; } });
+document.addEventListener('visibilitychange', () => { syncPause(); if (document.hidden) { keys.clear(); drag = null; } });
 canvas.addEventListener('wheel', (e) => { e.preventDefault(); rig.zoom(Math.exp(e.deltaY * 0.0012)); }, { passive: false });
 let drag: { pointerId: number; x: number; y: number; pan: boolean } | null = null;
 canvas.addEventListener('pointerdown', (e) => { if (drag) return; drag = { pointerId: e.pointerId, x: e.clientX, y: e.clientY, pan: e.shiftKey || e.button === 2 }; canvas.setPointerCapture(e.pointerId); });
@@ -252,11 +268,13 @@ const showStats = params.has('stats');
 let last = performance.now(), frames = 0, acc = 0, fixedTime = params.has('t') ? num('t', 0) : -1;
 let lastInteract = false;
 function frame(now: number) {
-  if (pausedAt) {
+  if (pausedAt !== null) {
     requestAnimationFrame(frame);
     return;
   }
-  const dt = THREE.MathUtils.clamp((now - last) / 1000, 0, 0.05);
+  const frameSeconds = Math.max(0, (now - last) / 1000);
+  // Bound catch-up after a long stall. Normal slow frames get the full driving time.
+  const dt = Math.min(frameSeconds, 0.5);
   last = now;
   shared.uTime.value = fixedTime >= 0 ? fixedTime : (now - pausedTime) / 1000;
   renderer.info.reset();
@@ -275,8 +293,13 @@ function frame(now: number) {
     brake: Math.max(Number(keys.has('Space')), Number(touch.input.brake), pad?.buttons[6]?.value ?? 0),
     handbrake: keys.has('ShiftLeft') || keys.has('ShiftRight') || touch.input.handbrake || pad?.buttons[2]?.pressed,
   };
-  car.update(dt, input);
-  trip.update(dt, now);
+  const steps = Math.max(1, Math.ceil(dt * 60));
+  const step = dt / steps;
+  for (let i = 0; i < steps; i++) {
+    car.update(step, input);
+    trip.recordSlide(step);
+  }
+  trip.update(now);
   audio.update(now, car.speed, input.throttle, car.grassBlend, trip.music);
   rig.fieldReveal = trip.music === 1 || trip.music === 2 ? 1 : 0;
   guide.mesh.material.opacity += ((rig.fieldReveal ? 0.23 : 0.74) - guide.mesh.material.opacity) * (1 - Math.exp(-dt * 2));
@@ -310,7 +333,7 @@ function frame(now: number) {
   drivingHud.update(now, car.x, car.z, car.heading, car.speed);
 
   if (showStats) {
-    frames++; acc += dt;
+    frames++; acc += frameSeconds;
     if (acc > 0.5) {
       const info = renderer.info;
       stats.textContent = `${(frames / acc).toFixed(0)} fps · ${info.render.calls} calls · ${(info.render.triangles / 1000).toFixed(0)}k tris · dpr ${pixelRatio.toFixed(2)}`;

@@ -17,9 +17,18 @@ try {
   assert.ok(road.length > 100);
   const version = await page.locator('#build-id').textContent();
   if (process.env.BTB_BUILD) assert.equal(version, 'Build ' + process.env.BTB_BUILD);
+  const map = page.locator('#map-toggle');
+  await map.click();
+  await map.focus();
+  await page.keyboard.press('Space');
+  assert.equal(await map.getAttribute('aria-expanded'), 'true', 'focused Map keeps keyboard activation');
   await page.keyboard.down('w');
   await page.waitForFunction(() => Number(document.querySelector('#speed').textContent) > 5);
   await page.keyboard.up('w');
+  await page.keyboard.down('Space');
+  await page.waitForFunction(() => window.__btb.car.speed === 0, null, { timeout: 2500 });
+  await page.keyboard.up('Space');
+  assert.equal(await map.getAttribute('aria-expanded'), 'true', 'braking after driving leaves Map open');
   assert.notEqual(await marker.getAttribute('transform'), initial);
   await page.locator('#map-toggle').tap();
   assert.ok(await page.locator('#map-panel').isHidden());
@@ -38,7 +47,13 @@ try {
   }
   const travel = page.locator('#travel');
   await travel.selectOption('station');
-  await page.waitForFunction(() => document.querySelector('#destination').textContent.startsWith('Arrived'));
+  await page.waitForFunction(() => document.querySelector('#destination').textContent.includes('village post office'));
+  await page.waitForFunction(() => {
+    const { track, scene } = window.__btb;
+    const town = track.at(29);
+    return document.querySelector('#station-pin').getAttribute('transform') === `translate(${town.x} ${town.z})`
+      && scene.getObjectByName('road-guide').count > 0;
+  });
   await travel.selectOption('bend');
   await page.waitForFunction(() => document.querySelector('#destination').textContent === 'Old hill road');
   await travel.selectOption('circuit');

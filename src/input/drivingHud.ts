@@ -4,15 +4,13 @@ import type { Track } from '../world/track';
 import { STATION_S, TOWN_EXIT_S } from '../world/station';
 import './drivingHud.css';
 
-export function createDrivingHud(track: Track, scenic: boolean, teleport: (s: number) => void) {
+export function createDrivingHud(track: Track, scenic: boolean, teleport: (s: number) => void, changeMap: (url: URL) => void) {
   const root = document.getElementById('drive-hud')!;
   const panel = document.getElementById('map-panel')!;
   const toggle = document.getElementById('map-toggle')!;
   const travel = document.querySelector<HTMLSelectElement>('#travel')!;
   const speed = document.getElementById('speed')!;
   const marker = document.getElementById('map-car')!;
-  const destination = document.getElementById('destination')!;
-  destination.hidden = !scenic;
 
   // In the north-up map one SVG unit is one metre. Only the car moves.
   const line = track.samples.filter((_, i) => i % 6 === 0)
@@ -31,13 +29,8 @@ export function createDrivingHud(track: Track, scenic: boolean, teleport: (s: nu
       mill.setAttribute('visibility', 'visible');
     }
   }
-  if (scenic) {
-    const station = track.at(STATION_S);
-    const pin = document.getElementById('station-pin')!;
-    pin.setAttribute('transform', `translate(${station.x} ${station.z})`);
-    pin.setAttribute('visibility', 'visible');
-  }
-  toggle.addEventListener('click', () => {
+  toggle.addEventListener('click', (event) => {
+    if (event.detail > 0) toggle.blur();
     panel.hidden = !panel.hidden;
     toggle.setAttribute('aria-expanded', String(!panel.hidden));
     toggle.setAttribute('aria-label', panel.hidden ? 'Expand minimap' : 'Collapse minimap');
@@ -64,7 +57,7 @@ export function createDrivingHud(track: Track, scenic: boolean, teleport: (s: nu
     else url.searchParams.set('route', key);
     url.searchParams.set('s', String(stops[key] ?? 0));
     if (key === 'forest') url.searchParams.delete('s');
-    location.assign(url.href);
+    changeMap(url);
   });
 
   let lastUpdate = -Infinity;
@@ -75,5 +68,5 @@ export function createDrivingHud(track: Track, scenic: boolean, teleport: (s: nu
     if (!panel.hidden) marker.setAttribute('transform', `translate(${x} ${z}) rotate(${180 - heading * 180 / Math.PI})`);
   }
   function hide(hidden: boolean) { root.hidden = travel.hidden = hidden; }
-  return { update, hide, travel, destination };
+  return { update, hide, travel };
 }

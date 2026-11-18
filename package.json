@@ -14,6 +14,7 @@
     "test:comfort": "node tools/run-comfort.mjs",
     "test:handling": "node tools/run-handling.mjs",
     "test:mobile": "node tools/mobile-browser-check.mjs",
+    "test:drive": "node tools/hud-check.mjs && node tools/session-clock-check.mjs",
     "test:stability": "node tools/stability.mjs",
     "package:desktop": "npm run build && node tools/desktop/package.mjs",
     "test:journey": "node tools/journey-check.mjs"

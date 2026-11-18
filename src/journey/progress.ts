@@ -40,10 +40,10 @@ function initial(): Progress {
     bestDrift: 0,
   };
 }
-function read(): Progress {
+function decode(text: string | null): Progress {
   const p = initial();
   try {
-    const raw = JSON.parse(localStorage.getItem(key) || '{}');
+    const raw = JSON.parse(text || '{}');
     for (const k of ['delivered', 'sawmill', 'scout', 'equipped', 'tuned', 'guide'] as const)
       if (typeof raw?.[k] === 'boolean') p[k] = raw[k];
     for (const k of ['coins', 'rice', 'visits'] as const)
@@ -51,31 +51,75 @@ function read(): Progress {
     for (const k of ['best', 'bestDrift'] as const) if (Number.isFinite(raw?.[k]) && raw[k] >= 0) p[k] = raw[k];
     if (raw?.job === 'parcel' || raw?.job === 'return') p.job = raw.job;
   } catch {
-    /* Start a fresh logbook when storage is unavailable. */
+    /* Keep defaults for unreadable saves. */
   }
   return p;
 }
 export function logbook() {
-  let progress = read();
+  // Both storage APIs can be blocked. The browsing context still carries its
+  // name across the game's same-tab, same-path map changes (including file URLs).
+  const prefix = key + ':' + location.pathname + ':';
   let persistent = true;
+  let progress = initial();
+  function refresh() {
+    try { progress = decode(localStorage.getItem(key)); } catch { /* Keep the current copy. */ }
+  }
+  function restore() {
+    let session = window.name.startsWith(prefix) ? window.name.slice(prefix.length) : null;
+    try { session ??= sessionStorage.getItem(key); } catch { /* Storage denied. */ }
+    persistent = session === null;
+    if (session !== null) progress = decode(session);
+    else refresh();
+  }
+  restore();
+  window.addEventListener('pageshow', (e) => { if (e.persisted) restore(); });
   window.addEventListener('storage', (e) => {
-    if (e.key === key) progress = read();
+    if (persistent && e.key === key && e.storageArea === localStorage) refresh();
   });
   let pending = Promise.resolve();
   function change(action: (p: Progress) => void) {
     const write = () => {
-      if (persistent) progress = read();
+      if (persistent) refresh();
       action(progress);
+      const snapshot = JSON.stringify(progress);
+      if (persistent) {
+        try {
+          localStorage.setItem(key, snapshot);
+          return;
+        } catch {
+          persistent = false;
+        }
+      }
       try {
-        localStorage.setItem(key, JSON.stringify(progress));
+        sessionStorage.setItem(key, snapshot);
+        if (window.name.startsWith(prefix)) window.name = '';
       } catch {
-        persistent = false;
+        window.name = prefix + snapshot;
       }
     };
-    pending = pending.then(() => (navigator.locks ? navigator.locks.request(key, write) : write()));
+    pending = pending.then(async () => {
+      if (persistent && navigator.locks) {
+        let entered = false;
+        try {
+          await navigator.locks.request(key, () => {
+            entered = true;
+            write();
+          });
+          return;
+        } catch (error) {
+          if (entered) throw error;
+          // Some private browsing contexts expose Locks but deny the request.
+        }
+      }
+      write();
+    });
     return pending;
   }
   return {
+    async travel(url: URL) {
+      await pending;
+      location.assign(url.href);
+    },
     get state() {
       return progress;
     },
