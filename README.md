@@ -1,8 +1,6 @@
-# Beyond the Bend — "Painted Diorama" visual prototype
+# Beyond the Bend
 
-A small, drivable miniature world built to answer one question: can procedural geometry,
-script-generated 3D models and custom shaders produce visuals that read as a polished indie
-game rather than a tech demo? This is a **visual and technical prototype**, not a game.
+A cute, gouache-painted 2.5D driving game about taking jobs and travelling through changing landscapes. The current build is a drivable countryside prototype. The [design roadmap](ROADMAP.md) tracks the first playable journey and the next design priority.
 
 Stack: Three.js (r187) · TypeScript · WebGL 2 · Vite · Blender Python → GLB.
 
@@ -26,6 +24,8 @@ npm run car          # regenerate public/models/car.glb with Blender (needs `ble
 | drag / `Q E` · `R F` · wheel / `Z X` · shift-drag | orbit · tilt · zoom · pan (**Free camera only**) |
 | `T` | miniature lens on/off |
 | `H` | hide the legend |
+
+The default art direction is gouache. For the earlier diorama, use `?study=original`. The [Close comparison](public/studies/close.html) includes the oil, print and gouache studies.
 
 URL options: `?cam=free`, `?preset=0|1|2`, `?s=<metres along the road>`, `?q=low|high`,
 `?tilt=0`, `?stats=1`, `?hud=0`, `?haze=<0..1>`. `?lens=ortho` restores the old parallel projection

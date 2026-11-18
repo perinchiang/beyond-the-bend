@@ -13,7 +13,9 @@ import { Car } from './vehicle/car';
 import { TouchControls } from './input/touch';
 
 const params = new URLSearchParams(location.search);
-const study = readStyleStudy(params.get('study'));
+const styleParam = params.get('study');
+const previewStudy = readStyleStudy(styleParam);
+const study = styleParam === 'original' ? undefined : previewStudy ?? 'gouache';
 const num = (k: string, d: number) => (params.has(k) ? Number(params.get(k)) : d);
 const mobile = matchMedia('(pointer: coarse)').matches || /Android|iPhone|iPad|Mobile/i.test(navigator.userAgent);
 const lowSpec = params.get('q') === 'low' || (params.get('q') !== 'high' && mobile);
@@ -71,7 +73,7 @@ renderer.info.autoReset = false;
 post.setTilt(num('tilt', lowSpec ? 0 : 1));
 
 // ---- start pose ----
-const startS = num('s', study ? 470 : 232);
+const startS = num('s', previewStudy ? 470 : 232);
 function placeAt(s: number) {
   const t = track.at(s);
   car.place(t.x - t.tz * -1.65, t.z + t.tx * -1.65, Math.atan2(t.tx, t.tz));
@@ -83,7 +85,7 @@ function initCamera() {
   if (params.get('cam') === 'free' || params.has('x')) {
     const fixed = params.has('x') && params.has('z') ? new THREE.Vector3(num('x', 0), hf.height(num('x', 0), num('z', 0)), num('z', 0)) : undefined;
     rig.setFree(num('yaw', 38), num('pitch', 47), num('zoom', 46), fixed);
-  } else rig.setDrive(THREE.MathUtils.clamp(Math.round(num('preset', study ? 2 : DEFAULT_PRESET)), 0, DRIVE_PRESETS.length - 1));
+  } else rig.setDrive(THREE.MathUtils.clamp(Math.round(num('preset', previewStudy ? 2 : DEFAULT_PRESET)), 0, DRIVE_PRESETS.length - 1));
   rig.update(0, car.position, car.heading, true);
   lens.focus = rig.mode === 'drive' ? 0.57 : 0.47;
   lens.inner = rig.mode === 'drive' ? 0.27 : 0.17;
