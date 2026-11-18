@@ -23,7 +23,8 @@ export class TouchControls {
         <button type="button" data-hold="right" aria-label="Steer right">▶</button>
       </div>
       <div class="touch-pedals">
-        <button type="button" data-hold="brake" aria-label="Brake">Brake</button>
+        <div class="brake-stack"><button type="button" data-hold="slide" aria-label="Handbrake">Slide</button>
+          <button type="button" data-hold="brake" aria-label="Brake">Brake</button></div>
         <div id="touch-throttle" role="slider" tabindex="0" aria-label="Throttle; hold and slide up to accelerate" aria-orientation="vertical" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0">
           <span class="throttle-fill"></span><span class="throttle-thumb"></span>
           <span class="throttle-label">Throttle<br /><output>0%</output></span>
@@ -50,6 +51,14 @@ export class TouchControls {
       };
       for (const event of ['pointerup', 'pointercancel', 'lostpointercapture'] as const) button.addEventListener(event, release);
     });
+    const brake = this.root.querySelector<HTMLButtonElement>('[data-hold="brake"]')!;
+    const pressure = (e: PointerEvent) => {
+      if (this.held.get(e.pointerId) !== 'brake') return;
+      const bounds = brake.getBoundingClientRect();
+      this.input.brake = Math.max(0.12, Math.min(1, (bounds.bottom - e.clientY) / (bounds.height - 8)));
+    };
+    brake.addEventListener('pointerdown', pressure);
+    brake.addEventListener('pointermove', pressure);
     const move = (e: PointerEvent) => {
       if (e.pointerId !== this.throttlePointer) return;
       const rect = this.throttle.getBoundingClientRect();
@@ -92,7 +101,8 @@ export class TouchControls {
   private updateHeld() {
     const values = [...this.held.values()];
     this.input.steer = Number(values.includes('right')) - Number(values.includes('left'));
-    this.input.brake = values.includes('brake');
+    this.input.handbrake = values.includes('slide');
+    if (!values.includes('brake')) this.input.brake = false;
     this.root.querySelectorAll<HTMLButtonElement>('[data-hold]').forEach(button => {
       const active = values.includes(button.dataset.hold!);
       button.classList.toggle('pressed', active);

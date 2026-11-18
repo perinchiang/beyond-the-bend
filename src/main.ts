@@ -240,12 +240,16 @@ function frame(now: number) {
   shared.uTime.value = fixedTime >= 0 ? fixedTime : (now - pausedTime) / 1000;
   renderer.info.reset();
 
+  const pad = Array.from(navigator.getGamepads?.() ?? []).find(p => p?.mapping === 'standard');
+  const axis = pad?.axes[0] ?? 0;
+  const stick = Math.abs(axis) < 0.12 ? 0 : Math.sign(axis) * (Math.abs(axis) - 0.12) / 0.88;
   const input = {
-    throttle: THREE.MathUtils.clamp(Math.max(touch.input.throttle, keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0), -1, 1),
+    throttle: THREE.MathUtils.clamp(Math.max(pad?.buttons[7]?.value ?? 0, touch.input.throttle, keys.has('KeyW') || keys.has('ArrowUp') ? 1 : 0) - (keys.has('KeyS') || keys.has('ArrowDown') ? 1 : 0), -1, 1),
     // The vehicle's positive steering angle is its visual left turn in the driving view.
     // Keep controls named from the player's perspective: left input must turn left on screen.
-    steer: -THREE.MathUtils.clamp(touch.input.steer + (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0), -1, 1),
-    brake: keys.has('Space') || touch.input.brake,
+    steer: -THREE.MathUtils.clamp(stick + touch.input.steer + (keys.has('KeyD') || keys.has('ArrowRight') ? 1 : 0) - (keys.has('KeyA') || keys.has('ArrowLeft') ? 1 : 0), -1, 1),
+    brake: Math.max(Number(keys.has('Space')), Number(touch.input.brake), pad?.buttons[6]?.value ?? 0),
+    handbrake: keys.has('ShiftLeft') || keys.has('ShiftRight') || touch.input.handbrake || pad?.buttons[2]?.pressed,
   };
   car.update(dt, input);
   audio.update(now, car.speed, input.throttle, car.grassBlend);

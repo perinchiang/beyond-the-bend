@@ -31,7 +31,7 @@ const LIVERY: Record<string, { color: string; emissive?: string; kind?: 'paint' 
   plate: { color: '#f2eedf' },
 };
 
-export interface CarInput { throttle: number; steer: number; brake: boolean }
+export interface CarInput { throttle: number; steer: number; brake: number | boolean; handbrake?: boolean }
 
 const WHEELBASE = 2.42;
 const TRACK = 1.5;
@@ -79,6 +79,18 @@ export class Car {
   z = 0;
   heading = 0;
   speed = 0;
+  private scout = false;
+  private tuned = false;
+  bonusRun = false;
+  ice = 0;
+  slip = 0;
+  private paint?: THREE.MeshLambertMaterial;
+  equip(scout: boolean, tuned: boolean) {
+    this.scout = scout;
+    this.tuned = tuned;
+    this.paint?.color.set(scout ? '#487e85' : LIVERY.paint.color);
+    this.body.scale.set(scout ? 1.09 : 1, scout ? 1.10 : 1, 1);
+  }
   private steer = 0; // front-wheel angle driving the motion (rad)
   private steerIn = 0; // how far the wheel is wound on, -1..1
   private curve = 0; // path curvature the body is actually following (1/m)
@@ -133,6 +145,7 @@ export class Car {
       const def = LIVERY[name] ?? { color: '#ff00ff' };
       if (!LIVERY[name]) console.warn(`[car] no livery entry for material "${name}"`);
       const base = new THREE.MeshLambertMaterial({ color: def.color, emissive: def.emissive ?? '#000000' });
+      if (name === 'paint') this.paint = base;
       const normalVarying = {
         vertexPars: 'varying vec3 vWorldNormal;',
         vertexMain: 'vWorldNormal = normalize(mat3(modelMatrix) * objectNormal);',
@@ -193,13 +206,14 @@ export class Car {
       pivot.add(w);
       this.wheels.push({ pivot, spin: w, front: /_f[lr]$/.test(w.name) });
     }
+    this.equip(this.scout, this.tuned);
     this.ready = true;
   }
 
   /** Teleport and clear every smoothed state, so repeated placements are deterministic. */
   place(x: number, z: number, heading: number) {
     this.x = x; this.z = z; this.heading = heading; this.speed = 0;
-    this.steer = 0; this.steerIn = 0; this.curve = 0; this.grass = 0;
+    this.steer = 0; this.steerIn = 0; this.curve = 0; this.grass = 0; this.slip = 0;
     this.roll = 0; this.pitch = 0; this.spinAngle = 0;
     this.groundY = this.hf.surface(x, z);
     this.upSm.set(0, 1, 0);
@@ -212,13 +226,16 @@ export class Car {
     const ground = smoothstep(GRASS_START, GRASS_FULL, this.hf.roadDist(this.x, this.z));
     this.grass += (ground - this.grass) * (snap ? 1 : 1 - Math.exp(-dt / (ground > this.grass ? GRASS_IN : GRASS_OUT)));
 
-    if (input.throttle > 0) this.speed += (this.speed < 0 ? 22 : 11) * dt * input.throttle;
+    const power = (this.scout ? 1.22 : 1) * (this.tuned ? 1.12 : 1) * (this.bonusRun ? 1.5 : 1);
+    const top = TOP_SPEED * (this.scout ? 1.06 : 1) * (this.bonusRun ? 1.32 : 1);
+    const brake = THREE.MathUtils.clamp(Number(input.brake), 0, 1);
+    if (input.throttle > 0) this.speed += (this.speed < 0 ? 22 : 11 * power) * dt * input.throttle;
     else if (input.throttle < 0) this.speed += (this.speed > 0 ? 24 : 7) * dt * input.throttle;
-    if (input.brake) this.speed -= Math.sign(this.speed) * Math.min(Math.abs(this.speed), 30 * dt);
+    if (brake) this.speed -= Math.sign(this.speed) * Math.min(Math.abs(this.speed), 30 * brake * dt);
     const drag = ROAD_DRAG + GRASS_DRAG * this.grass + (input.throttle === 0 ? COAST_DRAG : 0);
     this.speed -= this.speed * drag * dt;
-    this.speed = THREE.MathUtils.clamp(this.speed, -8, TOP_SPEED + 2);
-    if (this.speed > TOP_SPEED) this.speed -= (this.speed - TOP_SPEED) * 3 * dt;
+    this.speed = THREE.MathUtils.clamp(this.speed, -8, top + 2);
+    if (this.speed > top) this.speed -= (this.speed - top) * 3 * dt;
     if (Math.abs(this.speed) < 0.03 && input.throttle === 0) this.speed = 0;
 
     // Steering: wind the wheel towards the key, faster when heading back to centre.
@@ -226,14 +243,17 @@ export class Car {
     const turningIn = want * this.steerIn >= 0 && Math.abs(want) > Math.abs(this.steerIn);
     const step = (turningIn ? STEER_IN : STEER_OUT) * dt;
     this.steerIn += THREE.MathUtils.clamp(want - this.steerIn, -step, step);
-    const grip = GRIP * (1 - (1 - GRASS_GRIP) * this.grass);
+    const grip = GRIP * (1 - 0.28 * this.ice) * (1 - (1 - GRASS_GRIP) * this.grass);
     const v = Math.max(Math.abs(this.speed), 0.1);
     const lock = Math.min(STEER_LOCK, Math.atan((WHEELBASE * YAW_MAX) / v), Math.atan((WHEELBASE * grip) / (v * v)));
     this.steer = this.steerIn * lock;
     this.curve += (Math.tan(this.steer) / WHEELBASE - this.curve) * (snap ? 1 : 1 - Math.exp(-dt / YAW_LAG));
-    const yawRate = this.speed * this.curve;
+    const slide = input.handbrake && this.speed > 5 ? this.steerIn * smoothstep(5, 14, this.speed) : 0;
+    this.slip += (slide * 0.48 - this.slip) * (1 - Math.exp(-dt * (slide ? 5 : 7)));
+    if (input.handbrake) this.speed *= Math.exp(-dt * 0.52);
+    const yawRate = this.speed * this.curve * (1 + Math.abs(this.slip));
     this.heading += yawRate * dt;
-    const fx = Math.sin(this.heading), fz = Math.cos(this.heading);
+    const fx = Math.sin(this.heading - this.slip), fz = Math.cos(this.heading - this.slip);
     let nx = this.x + fx * this.speed * dt, nz = this.z + fz * this.speed * dt;
     // soft wall at the paper edge
     const ed = edgeDistance(nx, nz);
@@ -269,7 +289,7 @@ export class Car {
 
     // A little body language: lean out of corners, squat under power.
     const lat = THREE.MathUtils.clamp(yawRate * this.speed * 0.006, -0.07, 0.07);
-    const lon = THREE.MathUtils.clamp(input.throttle * 0.018 - (input.brake ? 0.03 * Math.sign(this.speed) : 0), -0.04, 0.04);
+    const lon = THREE.MathUtils.clamp(input.throttle * 0.018 - (brake * 0.03 * Math.sign(this.speed)), -0.04, 0.04);
     const kb = snap ? 1 : 1 - Math.exp(-dt * 6);
     this.roll += (lat - this.roll) * kb;
     this.pitch += (-lon - this.pitch) * kb;

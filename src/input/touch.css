@@ -24,3 +24,5 @@
   #touch-controls [data-hold="brake"] { width: 56px; }
   #touch-throttle { width: 56px; }
 }
+
+.brake-stack { display: grid; gap: 4px; }
