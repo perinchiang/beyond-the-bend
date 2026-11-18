@@ -61,12 +61,13 @@ export function buildRoad(track: Track, shared: PaintShared, study?: StyleStudy)
   geo.computeBoundingSphere();
 
   const C = (hex: string) => ({ value: new THREE.Color(hex) });
+  const snow = track.region === 'snow', ice = track.region === 'glacier';
   const mat = paintMaterial(new THREE.MeshLambertMaterial({ color: 0xffffff }), shared, {
     key: study ? `road-${study}` : 'road',
     uniforms: {
       uHalfRoad: { value: hw },
       uDash: { value: DASH_PERIOD },
-      cAsphalt: C(PAL.asphalt), cAsphaltLight: C(PAL.asphaltLight), cAsphaltDark: C(PAL.asphaltDark),
+      cAsphalt: C(ice ? '#9cbac6' : snow ? '#b2b8b8' : PAL.asphalt), cAsphaltLight: C(ice ? '#cadfdf' : snow ? '#d9d9d2' : PAL.asphaltLight), cAsphaltDark: C(ice ? '#7f9fac' : snow ? '#99a4ab' : PAL.asphaltDark),
       cLine: C(PAL.line), cCentre: C(PAL.lineCentre),
     },
     vertexPars: /* glsl */ `attribute vec3 aRoad;\nvarying vec3 vRoad;`,

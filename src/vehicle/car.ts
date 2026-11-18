@@ -72,6 +72,7 @@ export class Car {
   /** Tilts with the ground; holds body + wheels. */
   private chassis = new THREE.Group();
   private body = new THREE.Group();
+  private roofRack = new THREE.Group();
   private wheels: { pivot: THREE.Group; spin: THREE.Object3D; front: boolean }[] = [];
   private blob: THREE.Mesh;
 
@@ -87,6 +88,7 @@ export class Car {
   private paint?: THREE.MeshLambertMaterial;
   equip(scout: boolean, tuned: boolean) {
     this.scout = scout;
+    this.roofRack.visible = scout;
     this.tuned = tuned;
     this.paint?.color.set(scout ? '#487e85' : LIVERY.paint.color);
     this.body.scale.set(scout ? 1.09 : 1, scout ? 1.10 : 1, 1);
@@ -108,6 +110,18 @@ export class Car {
   constructor(private hf: HeightField, private shared: PaintShared) {
     this.root.add(this.chassis);
     this.chassis.add(this.body);
+    const rackMaterial = paintMaterial(new THREE.MeshLambertMaterial({ color: '#705f50' }), shared, { key: 'rack' });
+    const caseMaterial = paintMaterial(new THREE.MeshLambertMaterial({ color: '#bc9c73' }), shared, { key: 'case' });
+    for (const x of [-0.74, 0.13]) {
+      const rail = new THREE.Mesh(new THREE.BoxGeometry(0.09, 0.11, 1.18), rackMaterial);
+      rail.position.set(x, 1.56, 0);
+      this.roofRack.add(rail);
+    }
+    const luggage = new THREE.Mesh(new THREE.BoxGeometry(1.13, 0.28, 0.85), caseMaterial);
+    luggage.position.set(-0.3, 1.74, 0);
+    this.roofRack.add(luggage);
+    this.roofRack.visible = false;
+    this.body.add(this.roofRack);
     // Soft contact shadow: grounds the car even where the shadow map is too coarse.
     const blobMat = new THREE.ShaderMaterial({
       transparent: true,

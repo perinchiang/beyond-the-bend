@@ -40,12 +40,12 @@ try {
   await travel.selectOption('station');
   await page.waitForFunction(() => document.querySelector('#destination').textContent.startsWith('Arrived'));
   await travel.selectOption('bend');
-  await page.waitForFunction(() => document.querySelector('#destination').textContent === 'Foothill Station');
+  await page.waitForFunction(() => document.querySelector('#destination').textContent === 'Old hill road');
   await travel.selectOption('circuit');
   await page.waitForURL(url => url.searchParams.get('route') === 'circuit');
   await ready();
   assert.notEqual(await page.locator('#map-road').getAttribute('d'), road);
-  assert.ok(await page.locator('#destination').isHidden());
+  await page.waitForFunction(() => document.querySelector('#destination').textContent.startsWith('Hill sprint'));
   await travel.selectOption('town');
   await page.waitForURL(url => !url.searchParams.has('route'));
   await ready();

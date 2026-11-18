@@ -53,13 +53,32 @@ function makeVoices(ctx: AudioContext) {
   }
   const tyres = noiseBand(noise, 460, 0.65);
   const leaves = noiseBand(brush, 2100, 0.8);
+  const field = noiseBand(brush, 1140, 0.55);
+  let beat = 0, nextBeat = 0;
+  const melody = [62, 69, 71, 66, 64, 69, 67, 64, 62, 66, 69, 73, 71, 67, 64, 62];
+  function score(t: number, mode: number) {
+    field.volume.gain.setTargetAtTime(mode === 1 || mode === 2 ? 0.14 : 0, t, 0.6);
+    if (mode < 2) { beat = 0; nextBeat = 0; return; }
+    if (t < nextBeat) return;
+    const retro = mode === 3, step = retro ? 0.26 : 0.54;
+    nextBeat = t + step;
+    const tone = ctx.createOscillator(), envelope = ctx.createGain();
+    tone.type = retro ? 'square' : 'sine';
+    tone.frequency.value = 440 * 2 ** ((melody[beat++ % melody.length] + (retro ? 12 : 0) - 69) / 12);
+    envelope.gain.setValueAtTime(0.0001,t);
+    envelope.gain.exponentialRampToValueAtTime(retro ? 0.019 : 0.07,t+0.025);
+    envelope.gain.exponentialRampToValueAtTime(0.0001,t+step*1.5);
+    tone.connect(envelope).connect(master); tone.start(t); tone.stop(t+step*1.55);
+    tone.onended = () => { tone.disconnect(); envelope.disconnect(); };
+  }
   engine.start();
   wobble.start();
   noise.start();
   brush.start();
 
-  function mix(speed: number, throttle: number, grass: number) {
+  function mix(speed: number, throttle: number, grass: number, mode = 0) {
     const t = ctx.currentTime, roll = Math.min(1, Math.abs(speed) / 27);
+    score(t, mode);
     const load = speed * throttle < 0 ? 0 : Math.abs(throttle);
     engine.frequency.setTargetAtTime(39 + 64 * roll + 17 * load, t, 0.16);
     motor.gain.setTargetAtTime(0.065 + 0.09 * load + 0.035 * roll, t, 0.1);
@@ -115,10 +134,10 @@ export function drivingAudio(muteSwitch: HTMLInputElement) {
   });
 
   let lastMix = -Infinity;
-  function update(now: number, speed: number, throttle: number, grass: number) {
+  function update(now: number, speed: number, throttle: number, grass: number, mode = 0) {
     if (!ctx || !voices || ctx.state !== 'running' || muted || now - lastMix < 40) return;
     lastMix = now;
-    voices.mix(speed, throttle, grass);
+    voices.mix(speed, throttle, grass, mode);
   }
   return { update, setPaused };
 }

@@ -56,10 +56,19 @@
         </svg>
       </div>
       <div id="destination" role="status" hidden>Foothill Station</div>
+      <button type="button" id="road-action" hidden></button>
     </section>
     <button id="pause-toggle" type="button" aria-haspopup="dialog" aria-controls="pause-menu">Pause</button>
     <dialog id="pause-menu" aria-labelledby="pause-title">
       <h2 id="pause-title">Paused</h2>
+      <div id="journal" aria-live="polite"></div>
+      <label id="pass-label" hidden>Travel <select id="passes" aria-label="Visited passes"><option value="">Choose pass</option></select></label>
+      <div id="garage">
+        <button id="return-village" type="button" hidden>Return to the village</button>
+        <button id="garage-car" type="button"></button>
+        <button id="garage-tune" type="button"></button>
+      </div>
+      <label><span>Road guidance</span><input type="checkbox" id="guide-toggle" /></label>
       <label><span>Mute driving sounds</span><input type="checkbox" id="sound-toggle" /></label>
       <button type="button" id="resume-drive" autofocus>Resume drive</button>
     </dialog>

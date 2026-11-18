@@ -417,6 +417,15 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
 
   // Foliage casts shadows but is lit purely by its volume normals: letting leaf cards shadow
   // each other breaks the crown into noisy confetti instead of one soft painted form.
+  if (track.region === 'forest') {
+    for (let s = 0; s < track.length; s += lowSpec ? 8 : 5) {
+      const t = track.at(s);
+      for (const side of [-1, 1]) {
+        const offset = side * rng.range(9, 24);
+        tree('fir', t.x - t.tz * offset, t.z + t.tx * offset, rng.range(0.85, 1.32), 2.4, 4);
+      }
+    }
+  }
   woodyPlants.flush(foliageMat, true, false, group);
   if (study) shrubs.flush(foliageMat, true, true, group);
   bark.flush(birchBarkMaterial(shared), true, false, group);

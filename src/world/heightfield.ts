@@ -42,7 +42,9 @@ export function buildHeightField(track: Track, foothills = false): HeightField {
   const land = foothills
     ? (x: number, z: number) => naturalHeight(x, z) +
       18 * Math.exp(-(((x - 131) / 44) ** 2 + ((z + 91) / 32) ** 2))
-    : naturalHeight;
+    : (x: number, z: number) => naturalHeight(x, z) + (track.region === 'snow'
+      ? 28 * Math.exp(-((x / 105) ** 2 + ((z + 28) / 64) ** 2))
+      : track.region === 'volcano' ? 22 * Math.exp(-(((x - 1) / 48) ** 2 + (z / 55) ** 2)) : 0);
   const { samples } = track;
   const n = samples.length;
 

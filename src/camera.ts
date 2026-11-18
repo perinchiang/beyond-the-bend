@@ -82,6 +82,7 @@ export class CameraRig {
   viewHeight = DRIVE_PRESETS[DEFAULT_PRESET].view;
   mode: CameraMode = 'drive';
   presetIndex = DEFAULT_PRESET;
+  fieldReveal = 0;
 
   // free-camera goals
   private yawT = 0;
@@ -215,6 +216,7 @@ export class CameraRig {
 
     if (this.mode === 'drive') {
       const p = this.preset;
+      const view = p.view * (1 + this.fieldReveal * 0.12);
       const pitchGoal = p.pitch * DEG;
       // Sit behind the car, taking the short way round.
       const yawGoal = this.yaw + wrapAngle(carHeading + Math.PI - this.yaw);
@@ -222,7 +224,7 @@ export class CameraRig {
         this.yaw = yawGoal;
         this.vYaw.v = 0;
         this.pitch = pitchGoal;
-        this.viewHeight = p.view;
+        this.viewHeight = view;
         this.fov = p.fov;
         this.vPitch.v = this.vView.v = this.vFov.v = 0;
       } else {
@@ -234,13 +236,13 @@ export class CameraRig {
         const far = THREE.MathUtils.smoothstep(Math.abs(yawGoal - this.yaw), 40 * DEG, 140 * DEG);
         this.yaw = smoothDamp(this.yaw, yawGoal, this.vYaw, p.yawTime * (1 + 1.2 * far), dt);
         this.pitch = smoothDamp(this.pitch, pitchGoal, this.vPitch, MOVE_TIME, dt);
-        this.viewHeight = Math.exp(smoothDamp(Math.log(this.viewHeight), Math.log(p.view), this.vView, MOVE_TIME, dt)); // zoom in log space
+        this.viewHeight = Math.exp(smoothDamp(Math.log(this.viewHeight), Math.log(view), this.vView, MOVE_TIME, dt)); // zoom in log space
         this.fov = smoothDamp(this.fov, p.fov, this.vFov, MOVE_TIME, dt);
       }
       // Put the car below centre so more road shows ahead of it. Through a real lens the
       // ground nearer the camera is magnified, which the second term accounts for.
       const lens = this.ortho ? 0 : 2 * p.anchor * Math.tan((p.fov * DEG) / 2) * Math.cos(pitchGoal);
-      leadGoal = (p.anchor * p.view) / (Math.sin(pitchGoal) + lens);
+      leadGoal = (p.anchor * view) / (Math.sin(pitchGoal) + lens);
     } else {
       const k = ease(7, dt, snap);
       this.yaw += (this.yawT - this.yaw) * k;

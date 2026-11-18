@@ -1,3 +1,5 @@
+import { regionalGround } from './routes';
+import type { Region } from '../journey/progress';
 import * as THREE from 'three';
 import type { StyleStudy } from '../render/styleStudy';
 import { HeightField, WORLD_HALF } from './heightfield';
@@ -17,7 +19,7 @@ export function edgeDistance(x: number, z: number): number {
 
 export interface GroundPatch { x: number; z: number; radius: number }
 
-export function buildTerrain(hf: HeightField, shared: PaintShared, patches: GroundPatch[], study?: StyleStudy): THREE.Mesh {
+export function buildTerrain(hf: HeightField, shared: PaintShared, patches: GroundPatch[], study?: StyleStudy, region?: Region): THREE.Mesh {
   const n = SEGMENTS + 1;
   const step = (WORLD_HALF * 2) / SEGMENTS;
   const h = new Float32Array(n * n);
@@ -77,17 +79,18 @@ export function buildTerrain(hf: HeightField, shared: PaintShared, patches: Grou
   } : study === 'print' ? {
     grassLight: '#c7c983', grassMid: '#9db789', grassDeep: '#729b81', grassCool: '#568977', grassDry: '#e8bf69',
   } : PAL;
+  const palette = region ? regionalGround[region] : [meadow.grassLight, meadow.grassMid, meadow.grassDeep, meadow.grassCool, meadow.grassDry];
   const mat = paintMaterial(new THREE.MeshLambertMaterial({ color: 0xffffff }), shared, {
     key: study ? `terrain-${study}` : 'terrain',
     uniforms: {
       uStudyStone: { value: STUDY_STONE },
       uSdf: { value: hf.sdfTexture },
       uHalfRoad: { value: ROAD_HALF_WIDTH },
-      cLight: C(meadow.grassLight),
-      cMid: C(meadow.grassMid),
-      cDeep: C(meadow.grassDeep),
-      cCool: C(meadow.grassCool),
-      cDry: C(meadow.grassDry),
+      cLight: C(palette[0]),
+      cMid: C(palette[1]),
+      cDeep: C(palette[2]),
+      cCool: C(palette[3]),
+      cDry: C(palette[4]),
     },
     vertexPars: /* glsl */ `attribute float aForm, aUnderstory; varying float vUnderstory;\nvarying float vForm;`,
     vertexMain: /* glsl */ `vForm = aForm; vUnderstory = aUnderstory;`,

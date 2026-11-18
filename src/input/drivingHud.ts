@@ -1,3 +1,4 @@
+import { regions, titles } from '../journey/progress';
 import type { Track } from '../world/track';
 import { STATION_S, TOWN_EXIT_S } from '../world/station';
 import './drivingHud.css';
@@ -35,22 +36,23 @@ export function createDrivingHud(track: Track, scenic: boolean, teleport: (s: nu
   });
 
   document.getElementById('build-id')!.textContent = 'Build ' + import.meta.env.VITE_BUILD_ID;
-  const stops: Record<string, number> = { town: TOWN_EXIT_S, fork: 100, bend: 227, station: STATION_S, circuit: 232 };
+  const stops: Record<string, number> = { town: TOWN_EXIT_S, fork: 100, bend: 227, station: STATION_S, circuit: 0 };
+  for (const region of regions) travel.add(new Option(titles[region], region));
   travel.addEventListener('change', () => {
     const key = travel.value;
-    if (!(key in stops)) return;
+    if (!key) return;
     travel.value = '';
     travel.blur();
-    const nextScenic = key !== 'circuit';
-    if (scenic === nextScenic) {
-      teleport(stops[key]);
+    const nextScenic = key in stops && key !== 'circuit';
+    if ((scenic && nextScenic) || (key === 'circuit' && !track.region && !scenic) || key === track.region) {
+      teleport(stops[key] ?? 0);
       return;
     }
     const url = new URL(location.href);
     for (const p of ['study', 'cam', 'x', 'z']) url.searchParams.delete(p);
     if (nextScenic) url.searchParams.delete('route');
-    else url.searchParams.set('route', 'circuit');
-    url.searchParams.set('s', String(stops[key]));
+    else url.searchParams.set('route', key);
+    url.searchParams.set('s', String(stops[key] ?? 0));
     location.assign(url.href);
   });
 

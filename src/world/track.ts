@@ -1,3 +1,5 @@
+import { regionalRoads } from './routes';
+import type { Region } from '../journey/progress';
 import * as THREE from 'three';
 
 /**
@@ -47,11 +49,12 @@ export interface FieldLane {
 }
 
 export function extraWidth(track: Track, s: number) {
-  return track.lane ? 0.55 * THREE.MathUtils.smoothstep(s, 38, 80) *
+  return track.region === 'arcade' ? 1.9 : track.lane ? 0.55 * THREE.MathUtils.smoothstep(s, 38, 80) *
     (1 - THREE.MathUtils.smoothstep(s, 222, 285)) : 0;
 }
 
 export interface Track {
+  region?: Region;
   lane?: FieldLane;
   samples: TrackSample[];
   length: number;
@@ -59,9 +62,9 @@ export interface Track {
   at(s: number): TrackSample;
 }
 
-export function buildTrack(route: 'circuit' | 'foothill' = 'circuit'): Track {
+export function buildTrack(route: 'circuit' | 'foothill' | Region = 'circuit'): Track {
   const curve = new THREE.CatmullRomCurve3(
-    (route === 'foothill' ? FOOTHILL : CONTROL).map(([x, z]) => new THREE.Vector3(x, 0, z)),
+    (route === 'foothill' ? FOOTHILL : route === 'circuit' ? CONTROL : regionalRoads[route]).map(([x, z]) => new THREE.Vector3(x, 0, z)),
     true,
     'centripetal',
   );
@@ -94,6 +97,7 @@ export function buildTrack(route: 'circuit' | 'foothill' = 'circuit'): Track {
     };
   };
   const track: Track = { samples, length, at };
+  if (route !== 'circuit' && route !== 'foothill') track.region = route;
   if (route === 'foothill') {
     const from = 120, to = 230;
     const a = at(from), b = at(to);

@@ -42,3 +42,16 @@ body:has(#travel[hidden]) #pause-toggle { display: none; }
 #pause-menu label { display: flex; align-items: center; justify-content: space-between; min-height: 44px; cursor: pointer; }
 #sound-toggle { width: 20px; height: 20px; accent-color: #536e68; }
 #resume-drive { width: 100%; min-height: 44px; margin-top: 12px; border: none; border-radius: 8px; background: #536e68; color: #fffbea; font: inherit; cursor: pointer; }
+
+#road-action { pointer-events:auto; touch-action:manipulation; width:100%; min-height:38px; padding:4px 7px; border:0; border-radius:0 0 9px 9px; background:#526e63; color:#fff9e8; font:inherit; cursor:pointer; }
+#pause-menu { max-height:80dvh; box-sizing:border-box; width:min(310px,89vw); overflow-y:auto; }
+#journal { font-weight:500; }
+#garage { display:grid; gap:4px; margin:9px 0; }
+#garage button { min-height:36px; border:1px solid #b4af99; background:#ece6d6; border-radius:7px; color:inherit; font:inherit; }
+#garage button:disabled { opacity:.62; }
+body.arcade #view { image-rendering:pixelated; filter:saturate(1.22) contrast(1.08); }
+@media (max-height:450px) and (any-pointer:coarse) {
+  #drive-hud:has(#road-action:not([hidden])) #minimap { height:62px; }
+}
+
+#pause-menu [hidden] { display:none; }

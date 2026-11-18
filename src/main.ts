@@ -1,3 +1,8 @@
+import { roadGuide } from './journey/navigation';
+import { journeyDrive } from './journey/drive';
+import { regions } from './journey/progress';
+import { riceField } from './world/field';
+import { waysides } from './world/waysides';
 import * as THREE from 'three';
 import { stationJourney, TOWN_EXIT_S } from './world/station';
 import { buildTrack } from './world/track';
@@ -45,6 +50,10 @@ if (study === 'print') {
   shared.uDirtDark.value.set('#c5aa92');
 }
 
+if (!styleParam && ['snow', 'glacier'].includes(params.get('route') ?? '')) {
+  shared.uDirt.value.set('#d5dedc');
+  shared.uDirtDark.value.set('#acbdc5');
+}
 // ---- light: one warm low sun, cool sky fill, a little green bounce ----
 const SUN_DIR = new THREE.Vector3(0.50, 0.49, -0.75).normalize(); // direction towards the sun
 const sun = new THREE.DirectionalLight(new THREE.Color(PAL.sun), Math.PI * 1.12);
@@ -59,12 +68,20 @@ const hemi = new THREE.HemisphereLight(new THREE.Color(PAL.sky), new THREE.Color
 scene.add(hemi);
 
 // ---- world ----
-const scenic = !styleParam && params.get('route') !== 'circuit';
-const track = buildTrack(scenic ? 'foothill' : 'circuit');
+const region = !styleParam ? regions.find(id => id === params.get('route')) : undefined;
+const scenic = !styleParam && !region && params.get('route') !== 'circuit';
+const track = buildTrack(region ?? (scenic ? 'foothill' : 'circuit'));
+document.body.classList.toggle('arcade', region === 'arcade');
 const journey = scenic ? stationJourney(track) : undefined;
 const hf = buildHeightField(track, scenic);
-const scatter = buildScatter(track, hf, shared, lowSpec, study, journey);
-scene.add(buildTerrain(hf, shared, scatter.patches, study));
+const landmarks = scenic || region ? waysides(track, hf, shared) : undefined;
+if (landmarks) scene.add(landmarks.group);
+const field = scenic ? riceField(track, hf, shared, lowSpec) : undefined;
+if (field) scene.add(field.mesh);
+const guide = roadGuide(track, hf);
+scene.add(guide.mesh);
+const scatter = region && region !== 'forest' ? { group: new THREE.Group(), patches: [], stats: { region } } : buildScatter(track, hf, shared, lowSpec, study, journey);
+scene.add(buildTerrain(hf, shared, scatter.patches, study, region));
 scene.add(buildRoad(track, shared, study));
 scene.add(scatter.group);
 
@@ -78,7 +95,7 @@ renderer.info.autoReset = false;
 post.setTilt(num('tilt', lowSpec ? 0 : 1));
 
 // ---- start pose ----
-const startS = num('s', scenic ? TOWN_EXIT_S : previewStudy ? 470 : 232);
+const startS = num('s', region ? 0 : scenic ? TOWN_EXIT_S : previewStudy ? 470 : styleParam ? 232 : 0);
 function placeAt(s: number) {
   const t = track.at(s);
   car.place(t.x - t.tz * -1.65, t.z + t.tx * -1.65, Math.atan2(t.tx, t.tz));
@@ -90,7 +107,7 @@ function initCamera() {
   if (params.get('cam') === 'free' || params.has('x')) {
     const fixed = params.has('x') && params.has('z') ? new THREE.Vector3(num('x', 0), hf.height(num('x', 0), num('z', 0)), num('z', 0)) : undefined;
     rig.setFree(num('yaw', 38), num('pitch', 47), num('zoom', 46), fixed);
-  } else rig.setDrive(THREE.MathUtils.clamp(Math.round(num('preset', scenic || previewStudy ? 2 : DEFAULT_PRESET)), 0, DRIVE_PRESETS.length - 1));
+  } else rig.setDrive(THREE.MathUtils.clamp(Math.round(num('preset', scenic || region || previewStudy ? 2 : DEFAULT_PRESET)), 0, DRIVE_PRESETS.length - 1));
   rig.update(0, car.position, car.heading, true);
   lens.focus = rig.mode === 'drive' ? 0.57 : 0.47;
   lens.inner = rig.mode === 'drive' ? 0.27 : 0.17;
@@ -112,15 +129,14 @@ const touch = new TouchControls(
   () => { rig.toggleMode(); announceCamera(); },
   () => { rig.cyclePreset(); announceCamera(); },
 );
-let arrived = false;
+const trip = journeyDrive(track, car, scenic, !styleParam && !region && !scenic, message => announceCamera(message));
 const drivingHud = createDrivingHud(track, scenic, s => {
   keys.clear();
   touch.reset();
   placeAt(s);
   rig.setDrive();
   rig.update(0, car.position, car.heading, true);
-  arrived = false;
-  drivingHud.destination.textContent = 'Foothill Station';
+  trip.reset();
   announceCamera();
 });
 drivingHud.hide(params.get('hud') === '0');
@@ -194,6 +210,7 @@ function resize() {
   const budget = lowSpec ? 1.6e6 : params.get('q') === 'high' ? 4.2e6 : 3.0e6;
   pixelRatio = Math.min(devicePixelRatio || 1, mobile ? 1.5 : 2, Math.sqrt(budget / (w * h)));
   pixelRatio = mobile ? Math.min(pixelRatio, Math.max(0.5, num('dpr', pixelRatio) || pixelRatio)) : num('dpr', pixelRatio);
+  if (region === 'arcade') pixelRatio = Math.min(pixelRatio, 0.6);
   renderer.setPixelRatio(pixelRatio);
   renderer.setSize(w, h, false);
   post.setSize(Math.round(w * pixelRatio), Math.round(h * pixelRatio));
@@ -252,11 +269,13 @@ function frame(now: number) {
     handbrake: keys.has('ShiftLeft') || keys.has('ShiftRight') || touch.input.handbrake || pad?.buttons[2]?.pressed,
   };
   car.update(dt, input);
-  audio.update(now, car.speed, input.throttle, car.grassBlend);
-  if (!arrived && journey?.atStation(car.x, car.z)) {
-    arrived = true;
-    drivingHud.destination.textContent = 'Arrived at Foothill Station';
-  }
+  trip.update(dt, now);
+  audio.update(now, car.speed, input.throttle, car.grassBlend, trip.music);
+  rig.fieldReveal = trip.music === 1 || trip.music === 2 ? 1 : 0;
+  guide.mesh.material.opacity += ((rig.fieldReveal ? 0.23 : 0.74) - guide.mesh.material.opacity) * (1 - Math.exp(-dt * 2));
+  guide.update(now, car.x, car.z, car.speed, trip.goal);
+  field?.update(car.x, car.z, car.speed, shared.uTime.value);
+  landmarks?.update(shared.uTime.value);
   rig.orbit(((keys.has('KeyE') ? 1 : 0) - (keys.has('KeyQ') ? 1 : 0)) * dt * 1.4, ((keys.has('KeyR') ? 1 : 0) - (keys.has('KeyF') ? 1 : 0)) * dt * 0.9);
   if (keys.has('KeyZ')) rig.zoom(Math.exp(-dt * 1.3));
   if (keys.has('KeyX')) rig.zoom(Math.exp(dt * 1.3));
@@ -294,7 +313,7 @@ function frame(now: number) {
   requestAnimationFrame(frame);
 }
 
-car.load(import.meta.env.BASE_URL + 'models/car.glb').catch((e) => console.warn('[car] model not loaded', e)).finally(() => {
+car.load(canvas.dataset.model ?? import.meta.env.BASE_URL + 'models/car.glb').catch((e) => console.warn('[car] model not loaded', e)).finally(() => {
   drivingHud.travel.disabled = false;
   placeAt(startS);
   initCamera();
