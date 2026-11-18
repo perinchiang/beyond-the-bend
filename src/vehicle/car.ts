@@ -82,6 +82,7 @@ export class Car {
   private steer = 0; // front-wheel angle driving the motion (rad)
   private steerIn = 0; // how far the wheel is wound on, -1..1
   private curve = 0; // path curvature the body is actually following (1/m)
+  get grassBlend() { return this.grass; }
   private grass = 0; // 0 on the road .. 1 bogged down in grass
   private spinAngle = 0;
   private roll = 0;

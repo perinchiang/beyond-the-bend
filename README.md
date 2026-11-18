@@ -25,6 +25,8 @@ npm run car          # regenerate public/models/car.glb with Blender (needs `ble
 | `T` | miniature lens on/off |
 | `H` | hide the legend |
 
+Driving sound starts on the first keyboard or touch gesture. Web Audio synthesizes the engine, tyre noise and grass rustle from the car’s speed, throttle and ground contact. Open **Pause** to freeze the drive and mute driving sounds. **Resume drive** continues from the same position and speed. The mute preference is remembered on this device.
+
 The upper-left HUD shows speed in km/h and a north-up road map. The red arrow tracks the car, including off-road, and the diamond marks Foothill Station. Tap **Map** to collapse it. The upper-right **Debug** selector lists the build ID and travel points for both maps.
 
 The main entrance starts in Close view at the village exit. Follow the hayfield road through its broad bend to the clock tower at Foothill Station (306 m), then keep driving to return through the hills. Reload to start the trip again. Use `?route=circuit` for the earlier road layout in gouache. For the earlier diorama, use `?study=original`. The [Close comparison](public/studies/close.html) includes the oil, print and gouache studies.
@@ -135,7 +137,7 @@ The browser tools read `BTB_URL` (default `http://127.0.0.1:5183/beyond-the-bend
   than hidden cleanly, and the diorama's paper edge can show at the top of the frame as a pale sky.
 - Trees are not shadowed by other trees, there is no level-of-detail for foliage, and the leaf dabs
   look blocky in extreme close-up.
-- One small world (400 m square), one biome, one car, no audio.
+- One small world (400 m square), one biome, one car.
 
 ## Play on mobile
 

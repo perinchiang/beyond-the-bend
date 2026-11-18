@@ -56,6 +56,12 @@
       </div>
       <div id="destination" role="status" hidden>Foothill Station</div>
     </section>
+    <button id="pause-toggle" type="button" aria-haspopup="dialog" aria-controls="pause-menu">Pause</button>
+    <dialog id="pause-menu" aria-labelledby="pause-title">
+      <h2 id="pause-title">Paused</h2>
+      <label><span>Mute driving sounds</span><input type="checkbox" id="sound-toggle" /></label>
+      <button type="button" id="resume-drive" autofocus>Resume drive</button>
+    </dialog>
     <select id="travel" aria-label="Debug travel" hidden disabled>
       <option value="">Debug</option>
       <option disabled id="build-id"></option>

@@ -27,7 +27,7 @@ try {
   await page.locator('#map-toggle').tap();
   for (const [width, height] of [[812, 375], [568, 320], [320, 568]]) {
     await page.setViewportSize({ width, height });
-    const controls = ['#drive-hud', '#travel', '.touch-camera', '.touch-steering', '.touch-pedals'];
+    const controls = ['#drive-hud', '#travel', '#pause-toggle', '.touch-camera', '.touch-steering', '.touch-pedals'];
     const boxes = await Promise.all(controls.map(id => page.locator(id).boundingBox()));
     for (const [i, a] of boxes.entries()) {
       assert.ok(a && a.x >= 0 && a.y >= 0 && a.x + a.width <= width && a.y + a.height <= height, controls[i]);

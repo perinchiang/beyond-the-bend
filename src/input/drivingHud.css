@@ -1,4 +1,4 @@
-#drive-hud, #travel {
+#drive-hud, #travel, #pause-toggle {
   position: fixed;
   top: max(10px, env(safe-area-inset-top));
   color: #403a30;
@@ -27,8 +27,18 @@
 #destination { font-size: 11px; padding: 4px 8px 6px; }
 #destination::before { content: '◆'; color: #536e68; margin-right: 4px; }
 #travel { right: max(10px, env(safe-area-inset-right)); width: 84px; min-height: 44px; padding-left: 10px; cursor: pointer; }
+#pause-toggle { right: calc(max(10px, env(safe-area-inset-right)) + 90px); min-height: 44px; min-width: 52px; cursor: pointer; }
 body #stats { top: max(60px, calc(env(safe-area-inset-top) + 52px)); }
 @media (any-pointer: coarse) {
-  #travel { top: max(60px, calc(env(safe-area-inset-top) + 52px)); }
+  #travel, #pause-toggle { top: max(60px, calc(env(safe-area-inset-top) + 52px)); }
   body #stats { left: auto; right: max(10px, env(safe-area-inset-right)); top: max(108px, calc(env(safe-area-inset-top) + 100px)); }
 }
+
+body:has(#travel[hidden]) #pause-toggle { display: none; }
+
+#pause-menu { color: #403a30; background: #f6f0df; border: 1px solid #aaa38e; border-radius: 14px; width: min(230px, 75vw); padding: 20px; font: 600 14px/1.4 ui-rounded, system-ui, sans-serif; }
+#pause-menu::backdrop { background: rgba(48, 49, 39, .35); }
+#pause-menu h2 { margin: 0 0 8px; font-family: Georgia, serif; font-size: 25px; }
+#pause-menu label { display: flex; align-items: center; justify-content: space-between; min-height: 44px; cursor: pointer; }
+#sound-toggle { width: 20px; height: 20px; accent-color: #536e68; }
+#resume-drive { width: 100%; min-height: 44px; margin-top: 12px; border: none; border-radius: 8px; background: #536e68; color: #fffbea; font: inherit; cursor: pointer; }

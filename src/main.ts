@@ -11,6 +11,7 @@ import { readStyleStudy } from './render/styleStudy';
 import { PostFX } from './render/post';
 import { CameraRig, DRIVE_PRESETS, DEFAULT_PRESET } from './camera';
 import { Car } from './vehicle/car';
+import { drivingAudio } from './audio/driving';
 import { createDrivingHud } from './input/drivingHud';
 import { TouchControls } from './input/touch';
 
@@ -98,6 +99,10 @@ function initCamera() {
 initCamera();
 
 // ---- input ----
+const audio = drivingAudio(document.querySelector<HTMLInputElement>('#sound-toggle')!);
+const pauseMenu = document.querySelector<HTMLDialogElement>('#pause-menu')!;
+const pauseButton = document.querySelector<HTMLButtonElement>('#pause-toggle')!;
+let pausedAt = 0, pausedTime = 0;
 const keys = new Set<string>();
 const hud = document.getElementById('hud')!;
 const hudCam = document.getElementById('hud-cam')!;
@@ -131,8 +136,24 @@ function announceCamera(hint?: string) {
   clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => toast.classList.remove('show'), 1600);
 }
+pauseButton.addEventListener('click', () => {
+  keys.clear();
+  touch.reset();
+  drag = null;
+  pausedAt = performance.now();
+  audio.setPaused(true);
+  pauseMenu.showModal();
+});
+document.getElementById('resume-drive')!.addEventListener('click', () => pauseMenu.close());
+pauseMenu.addEventListener('close', () => {
+  last = performance.now();
+  pausedTime += last - pausedAt;
+  pausedAt = 0;
+  audio.setPaused(false);
+  pauseButton.blur();
+});
 addEventListener('keydown', (e) => {
-  if (e.repeat || e.target instanceof HTMLSelectElement) return;
+  if (pausedAt || e.repeat || e.target instanceof HTMLSelectElement) return;
   if (e.target instanceof HTMLButtonElement && (e.code === 'Space' || e.code === 'Enter')) return;
   keys.add(e.code);
   if (e.code === 'KeyH') {
@@ -210,9 +231,13 @@ const stats = document.getElementById('stats')!;
 const showStats = params.has('stats');
 let last = performance.now(), frames = 0, acc = 0, fixedTime = params.has('t') ? num('t', 0) : -1;
 function frame(now: number) {
-  const dt = Math.min(0.05, (now - last) / 1000);
+  if (pausedAt) {
+    requestAnimationFrame(frame);
+    return;
+  }
+  const dt = THREE.MathUtils.clamp((now - last) / 1000, 0, 0.05);
   last = now;
-  shared.uTime.value = fixedTime >= 0 ? fixedTime : now / 1000;
+  shared.uTime.value = fixedTime >= 0 ? fixedTime : (now - pausedTime) / 1000;
   renderer.info.reset();
 
   const input = {
@@ -223,6 +248,7 @@ function frame(now: number) {
     brake: keys.has('Space') || touch.input.brake,
   };
   car.update(dt, input);
+  audio.update(now, car.speed, input.throttle, car.grassBlend);
   if (!arrived && journey?.atStation(car.x, car.z)) {
     arrived = true;
     drivingHud.destination.textContent = 'Arrived at Foothill Station';
