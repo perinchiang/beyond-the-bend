@@ -1,46 +1,97 @@
 # Beyond the Bend
 
-A scenic free-driving and exploration game in development. Landscapes invite you to set off; driving makes you want to keep going. The current countryside prototype contains experiments that do not yet fully match this direction.
+An open-road driving game in development, aimed at a Steam release as a standalone indie game. Two things live in this repository:
 
-## 项目定调 / Current direction · 2026-11-19
+- **Graybox driving slice** (current work): https://perinchiang.github.io/beyond-the-bend/slice/
+- **Painted diorama prototype** (frozen): https://perinchiang.github.io/beyond-the-bend/
 
-> 风景吸引我出发，驾驶让我不想停车。
+## 项目定调 / Direction · 2026-11-19
 
-### 已确认的体验目标
+**目标（Patrick 原话）：** 美术风格像《art of rally》，玩法像《极限竞速：地平线》；上架 Steam，成为一款独立游戏；精美好看，车辆操控不错。
 
-- **驾驶乐趣与自由探索并重。** 玩家可以选择岔路、绕路、掉头、停留；出发首先因为想开车、想接近一处风景，不以接单、交付或金币作为基本动机。参考《极限竞速：地平线》的自由与旷野感，不承诺同等地图规模或制作体量。
-- **开阔、田野感强的巡游节奏。** 大部分时间是能持续踩油门加速的直路、长缓弯与起伏路段；普通缓弯轻微松油即可通过；偶尔出现连续的大 S 弯，让可控漂移成为技巧点，而不是每个弯都要求急刹或漂移。
-- **地形参与驾驶。** 长坡、坡顶、谷地与不同生态应带来视野和驾驶变化；车辆应有接地、随坡俯仰、适当条件下腾空与落地的反馈。这些是目标，不代表当前车辆已经有完整离地物理。
-- **自然风景是主角。** 大部分画面由地形、田野、树群、水体、天空和远景构成。建筑尽量少，以远处、低存在感的风景点缀为主；不建设密集近景村镇，不用巨大邮局标识或任务图标组织风景。
+**对地图和玩法的四条要求：**
 
-### 美术与生产边界
+1. 平时多一些一两公里的直路；
+2. 偶尔来一点只需要松油门或者轻点刹车就能通过的路口；
+3. 特殊地形可以设计一些连续弯道和漂移；
+4. 拥有不同生态地图的玩法。
 
-- **保留现有地面中已被认可的绘画表现作为起点。** 延续其大色块、克制笔触、随地形变化的冷暖与空间层次；先解决树、岩石等与它不协调的问题。不要为了让新资产显得协调，先重画整片地面或用重调色、强景深掩盖问题。第一步仍需保存并确认具体基准画面。
-- **环境美术以代码为主，尽量少依赖手工建模。** 允许程序生成网格、枝干与树冠、Canvas/Shader 笔触与纹理、参数化变体和有规则的摆放。这里的“纯代码优先”不是“没有 3D 形体”，也不是随意堆球、撒噪声或复制同一张树图。
-- **车辆允许建模。** 可以保留或改进现有 Blender → GLB 车辆管线；环境不因此转成大量逐件手工建模。建筑即使采用简单程序形体，也服从少量、远景、不抢主体的约束。
-- **原始视觉参考是 [notjignes 的风景作品](https://x.com/notjignes/status/2113958988949942538)。** 参考色域、笔触、形体简化与整体一致性，不把其高俯视展示镜头直接当成驾驶镜头，也不宣称作者所有资产均由纯代码生成。Art of Rally 等漂亮截图不等于已批准替换当前画风。
-- **完整环境画风与具体算法仍需实机验证。** “水粉”“油画”“低模”“微缩模型”都不能单独充当验收标准；生图素材、第三方生成器或新 Shader 都只是候选工具，不自动代表更接近目标。外部资源复用须核实许可。
+### 已定
 
-### 当前原型不等于最终定位
+- **技术栈不换。** Three.js + TypeScript + WebGL 2；Steam 外壳用 Electron + steamworks.js。先例是 [Slow Roads](https://store.steampowered.com/app/3431300/Slow_Roads/)：Three.js、单人开发、程序化道路和地形，2026-09 上架 Steam。若灰盒在目标硬件上性能不过关，再评估换引擎，那时要迁移的只有灰盒。
+- **顺序：先证明地图和手感，再做美术。** ① 灰盒驾驶切片 → ② Steam 外壳 → ③ 美术切片 → ④ 更多生态、活动与车辆 → ⑤ 商店页与试玩 Demo。
+- **镜头：** 巡航默认低位追尾，能看到地平线；高位俯视可切换。
+- **冻结，不删：** 送货、Mara、金币、车库、通行进度、邮局村庄、六个分区样段。不再投入，也不作为新工作的前提。
 
-现有送货、人物对白、金币、车库、通行进度、邮局村舍以及分区美术是已实现的实验；是否保留另行评估。它们不构成继续扩展送货主循环、近景建筑或城镇玩法的默认授权。本次定调不删除这些实现，也不宣称全世界的美术已经统一。
+### 未定
 
-下一步按 [程序化绘画美术研究与验证 issue #3](https://github.com/perinchiang/beyond-the-bend/issues/3) 工作：先固定地面基准，在同一地面、光照与正常驾驶镜头下比较少量资产样板；通过视觉、动态稳定性与性能检查，并由 Patrick 确认样板后，才推广到整条路线与更多生态。研究结论、样板结果和已确认方向必须分开记录。
+- **画风。** 由 Patrick 看到灰盒和美术切片之后决定。已知偏好：不要 Slow Roads 那样偏写实；要有自己的一套，好做，一眼看上去靠谱好玩。现有地面的色块表现是 Patrick 认可过的。候选方案在美术切片里用同一段路、同一镜头并排比较；讨论中的候选不等于已批准，灰盒的纯色画面也不代表任何方向。
+- [issue #3](https://github.com/perinchiang/beyond-the-bend/issues/3) 的笔触研究暂停。其中的验收规则（在驾驶镜头里看动态、不靠景深和雾遮问题、环境用代码生成、不靠建筑填内容）在第 ③ 步使用。
 
-**文档优先级：** Patrick 最新明确要求 → 本节已确认目标 → 上述 issue 的研究与验收记录。旧 [ROADMAP.md](ROADMAP.md) 保留历史实验与待办，其“接差事为主线”“玩法/正式画风全部已确定”及旧排期不再代表当前定调；开始后续实施前需对齐。以下运行方法、控制、镜头数值和渲染说明描述当前版本，不是对最终设计的承诺。讨论候选方案不能被记录为用户已经批准，新增功能不能反过来定义游戏。
+**文档优先级：** Patrick 最新明确要求 → 本节 → [灰盒切片 issue #4](https://github.com/perinchiang/beyond-the-bend/issues/4) 的记录。[ROADMAP.md](ROADMAP.md) 是送货主线时期的历史文档。
 
-Stack: Three.js (r187) · TypeScript · WebGL 2 · Vite. Environment: code-first procedural geometry and shaders; vehicle exception: Blender Python → GLB.
+## Graybox driving slice
 
-## Run
+A 5.1 km square map with 26.7 km of road, a force-based car and a low chase camera, with no art direction applied: flat colours, cones for trees. It exists to answer three questions before any art is made: is the map the right shape, is the car good to drive, and does a world this size run on the hardware a Steam release has to support. Status, measurements and open questions are in [issue #4](https://github.com/perinchiang/beyond-the-bend/issues/4).
+
+```bash
+npm install
+npm run dev          # then open http://127.0.0.1:5183/beyond-the-bend/slice/
+npm run test:slice   # map facts, a test driver on every road, 52 vehicle checks (no browser needed)
+npm run shots:slice  # screenshots and frame times (set BTB_URL; needs Chrome)
+```
+
+| | |
+|---|---|
+| `W A S D` / arrows · `Space` | drive · handbrake |
+| `V` | view: **Chase → Far chase → High** |
+| `R` · `M` · `Esc` | back on the nearest road · large map · pause |
+| `1`–`7` | jump to a test spot (numbered on the map) |
+| `P` | autopilot (follows the road you are on) |
+| `` ` `` · `H` | frame times and telemetry · hide the help |
+| Gamepad | RT / LT · left stick · A or X handbrake · Y reset · RB view · LB autopilot |
+
+URL options: `?spawn=1..7`, `?view=0|1|2`, `?stats=1`, `?auto=1`, `?dpr=<max pixel ratio>`, `?shadows=0`, `?mute=1`, `?hud=0`.
+
+### The map
+
+| Road | Length | What it is for |
+|---|---|---|
+| Ring | 12.6 km | Fast tarmac loop. South straight 2.65 km, north straight 1.68 km. Bends are R 480–520 m (flat out), R 280–300 m (lift) or R 180–220 m (light brake). |
+| Meridian | 3.6 km | North–south through the middle: two flat-out kinks and a jump. Joins the ring at both ends through R 200 m wyes. |
+| Lakeside | 4.7 km | Gravel sweepers, R 110–250 m, past the lake and through the forest. |
+| Pass | 4.4 km | Narrow tarmac over the massif, 21 → 180 m. Esses of R 45–75 m on the way up, two R 22 m hairpins on the way down. |
+
+Roads are laid out the way real ones are ([alignment.ts](src/slice/world/alignment.ts)): straight tangents between hand-placed points, a bend of a chosen radius at each point, eased in and out by clothoid spirals. The design speed of every bend is therefore an input. The layout is data in [network.ts](src/slice/world/network.ts); change it and run `node tools/slice-world.mjs`.
+
+Each road's height follows the land averaged over a distance (long on straights and fast sweepers, short in tight bends), takes the height of any earlier road it meets, and holds a grade limit; the terrain is then cut and filled to the road ([world.ts](src/slice/world/world.ts)). Jumps are authored: a 5 % ramp, a 25 m crest and a 5 % landing slope. On the pavement the car rides on the road profile exactly; off it, on the same 4 m height grid that is drawn. Trees are solid.
+
+### The car
+
+[vehicle.ts](src/slice/vehicle/vehicle.ts): a rigid body on four suspension rays, tyre forces with a grip peak, rear-biased all-wheel drive, six gears, air time and obstacle impacts, stepped at 240 Hz. Keyboard steering is wound on progressively, as in the diorama prototype, and the front wheels are turned into a slide for the driver. Every tunable is in `DEFAULT_SPEC`, each with a note on what the player feels when it goes up or down.
+
+Measured by `node tools/slice-handling.mjs`: 0–100 km/h in 5.7 s, 230 km/h top speed, 1.3 g on tarmac and 0.9 g on gravel, 100–0 km/h in 30 m. These numbers say the car meets its targets. They do not say it is fun; that needs driving.
+
+### What is not there
+
+No touch controls, quality presets, events or progression (only jump, drift and speed-trap readouts). Sound is a placeholder synth. Performance has been measured on an Apple M2 only. Beyond about 2 km a road can be hidden by simplified terrain, and trees appear abruptly at 3 km.
+
+## Painted diorama prototype (frozen)
+
+Everything below describes the earlier prototype at the repository root page. It still builds, runs and deploys, and its delivery loop, characters and regional studies are kept, but no further work is planned on them.
+
+Stack: Three.js (r187) · TypeScript · WebGL 2 · Vite. Environment: code-first procedural geometry and shaders; vehicle: Blender Python → GLB.
+
+### Run
 
 ```bash
 npm install
 npm run dev          # http://127.0.0.1:5183/beyond-the-bend/
-npm run build        # type-check + production bundle
+npm run build        # type-check + production bundles for both pages (tools/build.mjs)
 npm run car          # regenerate public/models/car.glb with Blender (needs `blender` on PATH)
 ```
 
-## Controls (current prototype)
+### Controls (current prototype)
 
 | | |
 |---|---|
@@ -138,7 +189,7 @@ A simple arcade model, tuned to be forgiving with all-or-nothing inputs (keys, t
 Acceleration, top speed and braking are as before. `npm run test:handling` measures all of
 this and laps the road with a tap-steering keyboard driver that has human reaction time.
 
-## How the picture is made (current implementation)
+### How the picture is made (current implementation)
 
 This is an inventory of the current mixed implementation, not a claim that every asset already
 matches the ground. The terrain's layered washes and restrained strokes are the starting point
@@ -161,7 +212,7 @@ cars the terrain's paint treatment: their geometry, colour hooks and lighting ad
 
 At the village post office, a pale clay pull-in leads from the asphalt to the parcel counter beneath a double-sided envelope sign. The four cottages and the orchard use a local gouache treatment. Pigment follows the plaster and roof planes. Along the road, white birches alternate between a swept crown, an open fork and a taller leader; oaks spread sideways and limes grow upright. The [paint on each bough](src/art/postal-orchard.md) supplies its edge and brush marks, while the scene's sun places the gold on the lit side, even on the return drive. The two small pigment and foliage textures are embedded in the build, including the offline version. The station, hills and other routes keep their existing art. This local treatment, including its generated-image foliage atlas, is an experiment to evaluate, not the default production standard for future environments.
 
-## Checks
+### Checks
 
 ```bash
 npm run shots                 # capture review screenshots into shots/ (needs dev server + Chrome)
@@ -176,7 +227,7 @@ npm run test:mobile           # touch controls and desktop input at a mobile vie
 
 The browser tools read `BTB_URL` (default `http://127.0.0.1:5183/beyond-the-bend/`).
 
-## Known limitations
+### Known limitations
 
 - Desktop Chrome checks cover synthetic touch input and mobile-sized layouts. **Not tested on real iPhone Safari**; native multi-touch capture, notch safe areas and sustained performance still need device testing.
 - Driving uses a simple arcade model with a separate handbrake/slip implementation; trees and props are not solid. The current car follows sampled terrain height rather than simulating a complete airborne/suspension cycle. Convincing crest take-off and landing remain targets to implement and validate.
@@ -186,7 +237,7 @@ The browser tools read `BTB_URL` (default `http://127.0.0.1:5183/beyond-the-bend
   look blocky in extreme close-up.
 - A small main map plus separate regional studies, not a broad continuous multi-biome world. Vehicle variants reuse the base car GLB; they are not a collection of independently modelled cars. Large-world streaming and sustained target-device performance remain unvalidated.
 
-## Play on mobile
+### Play on mobile
 
 Public game: https://perinchiang.github.io/beyond-the-bend/
 Repository: https://github.com/perinchiang/beyond-the-bend
@@ -208,7 +259,7 @@ On mobile the existing low-quality preset is selected by default (1024px shadows
 scatter/paint settings and tilt blur off); DPR is capped at 1.5 and rendering at 1.6 million pixels.
 The same painterly shader/post-processing pipeline is retained. Desktop quality defaults are unchanged.
 
-## Deployment
+### Deployment
 
 The Pages workflow builds with Node 22 and npm ci, then publishes dist using GitHub's official
 Pages actions. Every push to main deploys; workflow_dispatch allows manual redeployment.
