@@ -39,6 +39,7 @@ npm install
 npm run dev          # then open http://127.0.0.1:5183/beyond-the-bend/slice/
 npm run test:slice   # map facts, a test driver on every road, 52 vehicle checks (no browser needed)
 npm run shots:slice  # screenshots and frame times (set BTB_URL; needs Chrome)
+npm run shots:looks  # the same views through every art look, tiled into shots/looks/sheet.png
 ```
 
 | | |
@@ -48,10 +49,11 @@ npm run shots:slice  # screenshots and frame times (set BTB_URL; needs Chrome)
 | `R` · `M` · `Esc` | back on the nearest road · large map · pause |
 | `1`–`7` | jump to a test spot (numbered on the map) |
 | `P` | autopilot (follows the road you are on) |
+| `L` | next art look, at the same spot (see below) |
 | `` ` `` · `H` | frame times and telemetry · hide the help |
 | Gamepad | RT / LT · left stick · A or X handbrake · Y reset · RB view · LB autopilot |
 
-URL options: `?spawn=1..7`, `?view=0|1|2`, `?stats=1`, `?auto=1`, `?dpr=<max pixel ratio>`, `?shadows=0`, `?mute=1`, `?hud=0`.
+URL options: `?look=graybox|flat|gouache|print`, `?spawn=1..7`, `?at=x,z,headingDeg`, `?view=0|1|2`, `?stats=1`, `?auto=1`, `?dpr=<max pixel ratio>`, `?shadows=0`, `?mute=1`, `?hud=0`.
 
 ### The map
 
@@ -71,6 +73,24 @@ Each road's height follows the land averaged over a distance (long on straights 
 [vehicle.ts](src/slice/vehicle/vehicle.ts): a rigid body on four suspension rays, tyre forces with a grip peak, rear-biased all-wheel drive, six gears, air time and obstacle impacts, stepped at 240 Hz. Keyboard steering is wound on progressively, as in the diorama prototype, and the front wheels are turned into a slide for the driver. Every tunable is in `DEFAULT_SPEC`, each with a note on what the player feels when it goes up or down.
 
 Measured by `node tools/slice-handling.mjs`: 0–100 km/h in 5.7 s, 230 km/h top speed, 1.3 g on tarmac and 0.9 g on gravel, 100–0 km/h in 30 m. These numbers say the car meets its targets. They do not say it is fun; that needs driving.
+
+### Art look studies
+
+Patrick drove the graybox on 2026-11-19 and approved the car, the camera and the map for now (his notes are in [issue #6](https://github.com/perinchiang/beyond-the-bend/issues/6)). The next question is the art. Three candidate directions are drawn over the same map, car and camera so they can be compared on the same road. **None of them is chosen.** Without `?look=` the slice stays graybox.
+
+| | Try it | Idea |
+|---|---|---|
+| **A · Flat** | [`?look=flat`](https://perinchiang.github.io/beyond-the-bend/slice/?look=flat) | Bright midday. Saturated colour blocks, faceted trees in tiers, violet shadows, crop fields in a patchwork. Every object is one or two flat colours and reads at a glance. |
+| **B · Gouache** | [`?look=gouache`](https://perinchiang.github.io/beyond-the-bend/slice/?look=gouache) | Soft afternoon. Muted pigments, painted washes on the ground, round crowns on pale trunks, warm haze, paper grain. Continues the ground treatment approved in the diorama. |
+| **C · Print** | [`?look=print`](https://perinchiang.github.io/beyond-the-bend/slice/?look=print) | Low golden sun. Five or six inks, light in hard steps, haze in flat layers so hills stack like a travel poster, clouds as level bars. |
+
+![The same four views in each look](docs/looks/sheet.jpg)
+
+Rows: A, B, C. Columns: plains straight, lakeside gravel, the pass, the hairpins from the High view.
+
+A look is data ([looks.ts](src/slice/render/looks.ts)): palette, light, sky, tree shapes, ground treatment and a finishing pass. Everything is generated in code; there are no image or model assets besides the car. Field parcels and painted washes are computed in the terrain shader, trees and roadside growth are small procedural meshes tinted per instance, and the sky and clouds are one shader.
+
+These are studies, not production art: foliage has no levels of detail (the gouache look draws up to 2.6 million triangles in the forest), trees cast only a soft blob shadow, each look has one fixed time of day, and nothing reacts to the car. All three hold 60 fps on an Apple M2; nothing else has been measured.
 
 ### What is not there
 
