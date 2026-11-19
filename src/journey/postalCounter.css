@@ -1,0 +1,58 @@
+/* One piece of stationery, opposite the 3D counter. Leave the road in view. */
+#postal-counter {
+  --ink:#353d34; --red:#914535; --rule:#c8bda2;
+  position:fixed; inset-block:0; inset-inline:auto; margin:auto 0; padding:0; box-sizing:border-box;
+  width:min(360px,42vw); max-width:calc(100vw - 24px); max-height:calc(100dvh - 24px);
+  color:var(--ink); background:linear-gradient(115deg,#fff8e6,#f5ead2);
+  border:1px solid #9f957e; border-radius:4px; box-shadow:0 12px 35px #352d2040,0 2px 3px #352d2020;
+  font:500 15px/1.38 system-ui,sans-serif; overflow-y:auto;
+}
+#postal-counter::before {
+  content:""; display:block; height:5px;
+  background:repeating-linear-gradient(-45deg,#a85240 0 11px,#f5ead4 11px 22px,#638175 22px 33px,#f5ead4 33px 44px);
+}
+#postal-counter[data-side="left"] { left:max(24px,env(safe-area-inset-left)); }
+#postal-counter[data-side="right"] { right:max(24px,env(safe-area-inset-right)); }
+#postal-counter::backdrop { background:rgba(42,41,31,.08); }
+body:has(#postal-counter[open]) :is(#hud,#drive-hud,#touch-controls,#pause-toggle,#travel,#toast,#stats) { visibility:hidden; }
+.post-heading { display:flex; align-items:center; gap:9px; margin:0 18px; min-height:55px; border-bottom:1px solid var(--rule); }
+.post-mark { color:var(--red); width:52px; flex:none; }
+.post-heading span,.post-role,.post-address span { font-size:10px; letter-spacing:.12em; text-transform:uppercase; font-weight:750; }
+.post-heading span { color:#615847; letter-spacing:.13em; }
+#post-close { margin-left:auto; margin-right:-10px; width:44px; height:44px; flex:none; background:none; border:0; color:#625c4e; font:24px/1 Georgia,serif; cursor:pointer; }
+.post-person { display:grid; grid-template-columns:41% 1fr; align-items:center; gap:13px; margin:16px 18px 18px 11px; }
+.post-portrait { position:relative; height:147px; overflow:hidden; align-self:end; }
+.post-portrait::before { content:""; position:absolute; inset:12% 4% 0; background:#e6d8ac; border-radius:50% 48% 3% 2%; }
+.post-portrait img { position:absolute; width:100%; height:100%; object-fit:contain; object-position:center bottom; }
+.post-role { color:#84654d; }
+#post-name { margin:0 0 6px; font:500 36px/1.05 Georgia,serif; letter-spacing:-.05em; }
+#post-line { margin:0; font:500 15px/1.38 Georgia,serif; }
+.post-foot { border-top:1px dashed var(--rule); padding:12px 18px 17px; }
+.post-address { display:flex; gap:10px; align-items:baseline; margin-bottom:11px; }
+.post-address span { color:#716953; }
+.post-address strong { font:600 16px/1.2 Georgia,serif; }
+.post-signature { min-height:44px; display:grid; }
+#post-sign { min-height:44px; border:0; border-radius:3px; background:#395c51; color:#fff8e7; font:650 14px/1.2 system-ui,sans-serif; cursor:pointer; }
+#post-sign:hover { background:#294b41; }
+#postal-counter button:focus-visible { outline:2px solid #a5652d; outline-offset:2px; }
+#post-receipt { display:flex; align-items:center; justify-content:space-between; gap:8px; }
+#post-stamp { display:inline-block; color:var(--red); padding:3px 9px; border:2px solid currentColor; border-radius:3px; transform:rotate(-4deg); font:800 15px/1.2 system-ui,sans-serif; text-transform:uppercase; letter-spacing:.11em; }
+#post-payment { color:#4b5d4e; font-weight:650; font-size:13px; }
+#postal-counter [hidden] { display:none; }
+@media (max-height:480px) {
+  #postal-counter { width:min(304px,44vw); }
+  #postal-counter[data-side="left"] { left:max(8px,env(safe-area-inset-left)); }
+  #postal-counter[data-side="right"] { right:max(8px,env(safe-area-inset-right)); }
+  .post-heading { min-height:42px; margin-inline:12px; gap:6px; }
+  .post-mark { width:43px; }
+  .post-person { margin:9px 13px 9px 6px; gap:9px; grid-template-columns:37% 1fr; }
+  .post-portrait { height:113px; }
+  #post-name { font-size:28px; margin-bottom:3px; }
+  #post-line { font-size:14px; line-height:1.25; }
+  .post-foot { padding:8px 12px 11px; }
+  .post-address { margin-bottom:7px; }
+}
+@media (orientation:portrait) and (max-width:620px) {
+  #postal-counter { inset-block:max(10px,env(safe-area-inset-top)) auto; width:min(350px,94vw); margin:0 auto; }
+  #postal-counter[data-side] { left:0; right:0; }
+}

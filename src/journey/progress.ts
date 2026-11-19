@@ -12,6 +12,7 @@ export type Job = 'parcel' | 'return' | null;
 export interface Progress {
   job: Job;
   delivered: boolean;
+  returned: boolean;
   sawmill: boolean;
   coins: number;
   scout: boolean;
@@ -28,6 +29,7 @@ function initial(): Progress {
   return {
     job: null,
     delivered: false,
+    returned: false,
     sawmill: false,
     coins: 0,
     scout: false,
@@ -44,7 +46,7 @@ function decode(text: string | null): Progress {
   const p = initial();
   try {
     const raw = JSON.parse(text || '{}');
-    for (const k of ['delivered', 'sawmill', 'scout', 'equipped', 'tuned', 'guide'] as const)
+    for (const k of ['delivered', 'returned', 'sawmill', 'scout', 'equipped', 'tuned', 'guide'] as const)
       if (typeof raw?.[k] === 'boolean') p[k] = raw[k];
     for (const k of ['coins', 'rice', 'visits'] as const)
       if (Number.isSafeInteger(raw?.[k]) && raw[k] >= 0) p[k] = raw[k];

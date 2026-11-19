@@ -1,3 +1,4 @@
+import type { PostalCounter } from './postalCounter';
 import type { Car } from '../vehicle/car';
 import { roadPoint, type Track } from '../world/track';
 import { MILL_DISTANCE } from '../world/cedar';
@@ -12,6 +13,7 @@ export function journeyDrive(
   circuit: boolean,
   notify: (message: string) => void,
   drivingTime: () => number,
+  counter: PostalCounter,
   showParcel?: (inTransit: boolean, delivered: boolean) => void,
 ) {
   const book = logbook(),
@@ -137,6 +139,7 @@ export function journeyDrive(
     music = 0;
     let line = '';
     if (village) {
+      const parked = Math.abs(car.speed) < 0.35;
       const town = near(TOWN_EXIT_S),
         station = near(STATION_S);
       if (p.job === 'parcel') {
@@ -146,10 +149,12 @@ export function journeyDrive(
       } else if (p.job === 'return') {
         target = TOWN_EXIT_S;
         line = 'Timetables → Village';
-        if (town) actionView('deliver', 'Deliver timetables');
+        if (town && parked) actionView('mara-return', 'Talk to Mara');
+        else if (town) line = 'Stop by the post office to deliver the timetables';
       } else if (town) {
         line = p.delivered ? 'Village post office' : 'Mara has a parcel for the train.';
-        actionView('parcel', 'Take station parcel');
+        if (parked) actionView('mara-send', 'Talk to Mara');
+        else line = 'Stop by the post office to meet Mara';
       } else if (station) {
         line = 'Arrived at Foothill Station';
         if (p.delivered) actionView('return', 'Take village mail');
@@ -273,28 +278,37 @@ export function journeyDrive(
     if (!key) return;
     pending = true;
     try {
-      if (key === 'parcel' || key === 'return') {
-        await edit((p) => {
-          if (!p.job) p.job = key;
+      if (key === 'mara-send' || key === 'mara-return') {
+        const sending = key === 'mara-send';
+        counter.visit(sending ? 'send' : 'receive', sending ? book.state.delivered : book.state.returned, async () => {
+          let award: number | null = null;
+          await edit(p => {
+            if (sending && !p.job) {
+              p.job = 'parcel';
+              award = 0;
+            } else if (!sending && p.job === 'return') {
+              p.job = null;
+              p.returned = true;
+              award = 35;
+              p.coins += award;
+            }
+          });
+          sense(performance.now());
+          return award;
         });
-        notify(key === 'parcel' ? 'Mara: Catch the afternoon train!' : 'Porter: Take these timetables home.');
+      } else if (key === 'return') {
+        await edit(p => { if (p.delivered && !p.job) p.job = 'return'; });
+        notify('Porter: Take these timetables home.');
       } else if (key === 'deliver') {
-        const expected = book.state.job;
         let award = 0;
-        await edit((p) => {
-          if (!expected || p.job !== expected) return;
-          award = expected === 'parcel' && !p.delivered ? 100 : 35;
+        await edit(p => {
+          if (p.job !== 'parcel') return;
+          award = p.delivered ? 35 : 100;
           p.coins += award;
           p.delivered = true;
           p.job = null;
         });
-        if (award)
-          notify(
-            (expected === 'parcel' ? 'Porter: Just in time!' : 'Mara: Our timetables!') +
-              ' +' +
-              award +
-              ' coins',
-          );
+        if (award) notify('Porter: Just in time! +' + award + ' coins');
       } else if (key === 'circuit') visit('circuit');
       else if (key === 'ridge') {
         await edit((p) => {

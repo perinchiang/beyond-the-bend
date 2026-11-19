@@ -18,7 +18,10 @@ async function checkSession(blockBoth) {
   await page.goto(debug.href);
   const act = name => page.getByRole('button', { name, exact: true }).click();
   const travel = page.locator('#travel');
+  await act('Talk to Mara');
   await act('Take station parcel');
+  await page.getByText('Dispatched', { exact: true }).waitFor();
+  await act('Leave the counter');
   await travel.selectOption('station');
   await act('Deliver parcel');
   await page.waitForFunction(() => document.querySelector('#journal').textContent.startsWith('Session only · 100 coins'));
@@ -30,7 +33,7 @@ async function checkSession(blockBoth) {
   await act('Buy Field Scout · 60 coins');
   await act('Return to the village');
   await page.reload();
-  await page.getByRole('button', { name: 'Take station parcel' }).waitFor();
+  await page.getByRole('button', { name: 'Talk to Mara' }).waitFor();
   await act('Pause');
   assert.match(await page.locator('#journal').innerText(), /Session only · 40 coins · Field Scout.*Station parcel delivered/);
   await page.close();

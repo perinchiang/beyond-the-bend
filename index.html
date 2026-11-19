@@ -39,7 +39,7 @@
       <div class="t">Beyond the Bend</div>
       <b>W A S D</b> / arrows — drive &nbsp;·&nbsp; <b>Space</b> — brake · <b>Shift</b> — slide<br />
       <span id="hud-cam"></span><br />
-      <b>T</b> — miniature lens &nbsp;·&nbsp; <b>H</b> — hide
+      <b>E</b> — interact &nbsp;·&nbsp; <b>T</b> — miniature lens &nbsp;·&nbsp; <b>H</b> — hide
     </div>
     <section id="drive-hud" aria-label="Driving information" hidden>
       <div class="speed-row">
@@ -59,6 +59,32 @@
       <div id="destination" role="status" hidden>Foothill Station</div>
       <button type="button" id="road-action" hidden></button>
     </section>
+    <dialog id="postal-counter" aria-labelledby="post-name" aria-describedby="post-line">
+      <header class="post-heading">
+        <svg class="post-mark" viewBox="0 0 65 36" fill="none" aria-hidden="true">
+          <g stroke="currentColor" stroke-width="1.4" opacity=".6"><path d="M30 10c9-6 18 5 31-1m-31 8c9-6 18 5 31-1m-31 8c9-6 18 5 31-1"/></g>
+          <rect x="2" y="4" width="39" height="28" rx="1.7" fill="#a84936"/><path fill="#fff0cb" d="M6 8h31v20H6z"/>
+          <path d="m7 11 14.5 9L36 11" stroke="#a84936" stroke-width="2.8" stroke-linejoin="round"/>
+        </svg>
+        <span>Village Post Office</span>
+        <button id="post-close" type="button" aria-label="Leave the counter">×</button>
+      </header>
+      <div class="post-person">
+        <div class="post-portrait"><img id="post-mara" alt="" /></div>
+        <div class="post-voice">
+          <span class="post-role">Postmistress</span>
+          <h2 id="post-name">Mara</h2>
+          <p id="post-line"></p>
+        </div>
+      </div>
+      <footer class="post-foot">
+        <div class="post-address"><span id="post-direction"></span><strong>Foothill Station</strong></div>
+        <div class="post-signature">
+          <button id="post-sign" type="button" autofocus></button>
+          <div id="post-receipt" role="status" hidden><strong id="post-stamp"></strong><span id="post-payment"></span></div>
+        </div>
+      </footer>
+    </dialog>
     <button id="pause-toggle" type="button" aria-haspopup="dialog" aria-controls="pause-menu">Pause</button>
     <dialog id="pause-menu" aria-labelledby="pause-title">
       <h2 id="pause-title">Paused</h2>

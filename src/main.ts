@@ -1,4 +1,5 @@
 import { roadGuide } from './journey/navigation';
+import { postalCounter } from './journey/postalCounter';
 import { journeyDrive } from './journey/drive';
 import { regions } from './journey/progress';
 import { riceField } from './world/field';
@@ -129,7 +130,7 @@ function drivingTime() {
 }
 function syncPause() {
   const now = performance.now();
-  if (pauseMenu.open || document.hidden) {
+  if (pauseMenu.open || counter.open || document.hidden) {
     pausedAt ??= now;
   } else if (pausedAt !== null) {
     pausedTime += now - pausedAt;
@@ -146,7 +147,17 @@ const touch = new TouchControls(
   () => { rig.toggleMode(); announceCamera(); },
   () => { rig.cyclePreset(); announceCamera(); },
 );
-const trip = journeyDrive(track, car, scenic, !styleParam && !region && !scenic, message => announceCamera(message), drivingTime, journey?.showParcel);
+const counter = postalCounter(open => {
+  keys.clear();
+  touch.reset();
+  drag = null;
+  audio.setPaused(open || pauseMenu.open);
+  syncPause();
+}, () => {
+  const office = journey!.postOffice;
+  return new THREE.Vector3(office.x, hf.height(office.x, office.z) + 2, office.z).project(rig.camera).x > 0;
+});
+const trip = journeyDrive(track, car, scenic, !styleParam && !region && !scenic, message => announceCamera(message), drivingTime, counter, journey?.showParcel);
 const drivingHud = createDrivingHud(track, scenic, s => {
   keys.clear();
   touch.reset();
@@ -185,6 +196,10 @@ pauseMenu.addEventListener('close', () => {
   pauseButton.blur();
 });
 addEventListener('keydown', (e) => {
+  if (counter.open && e.code === 'KeyE') {
+    if (!e.repeat) void counter.confirm();
+    return;
+  }
   if (pausedAt !== null || e.repeat || e.target instanceof HTMLSelectElement) return;
   if (e.target instanceof HTMLButtonElement && (e.code === 'Space' || e.code === 'Enter')) return;
   if (e.target instanceof HTMLButtonElement &&
@@ -270,7 +285,12 @@ const showStats = params.has('stats');
 let last = performance.now(), frames = 0, acc = 0, fixedTime = params.has('t') ? num('t', 0) : -1;
 let lastInteract = false;
 function frame(now: number) {
+  const pad = Array.from(navigator.getGamepads?.() ?? []).find(p => p?.mapping === 'standard');
+  const interact = Boolean(pad?.buttons[0]?.pressed);
+  const pressed = interact && !lastInteract;
+  lastInteract = interact;
   if (pausedAt !== null) {
+    if (pressed && counter.open && !document.hidden) void counter.confirm();
     requestAnimationFrame(frame);
     return;
   }
@@ -281,10 +301,11 @@ function frame(now: number) {
   shared.uTime.value = fixedTime >= 0 ? fixedTime : (now - pausedTime) / 1000;
   renderer.info.reset();
 
-  const pad = Array.from(navigator.getGamepads?.() ?? []).find(p => p?.mapping === 'standard');
-  const interact = Boolean(pad?.buttons[0]?.pressed);
-  if (interact && !lastInteract) trip.interact();
-  lastInteract = interact;
+  if (pressed && rig.mode === 'drive') trip.interact();
+  if (counter.open) {
+    requestAnimationFrame(frame);
+    return;
+  }
   const axis = pad?.axes[0] ?? 0;
   const stick = Math.abs(axis) < 0.12 ? 0 : Math.sign(axis) * (Math.abs(axis) - 0.12) / 0.88;
   const input = {

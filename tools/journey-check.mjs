@@ -38,7 +38,14 @@ try {
   });
   const counter = await parcel();
   assert.ok(counter.visible);
+  await act('Talk to Mara');
+  assert.equal(await page.locator('#post-mara').evaluate(img => img.complete && img.naturalWidth > 0), true);
+  await page.keyboard.press('Escape');
+  assert.equal((await state())?.job ?? null, null);
+  await page.keyboard.press('e');
+  await page.locator('#postal-counter[open]').waitFor();
   await act('Take station parcel');
+  await page.getByText('Dispatched', { exact: true }).waitFor();
   await saveMatches({ job: 'parcel' });
   await page.reload();
   await ready();
@@ -87,7 +94,10 @@ try {
   await act('Resume drive');
   await act('Take village mail');
   await go(29);
+  await act('Talk to Mara');
   await act('Deliver timetables');
+  await page.getByText('Received', { exact: true }).waitFor();
+  await page.keyboard.press('Escape');
   await saveMatches({ coins: 35, job: null });
   for (const [i, s] of [78, 103, 154].entries()) {
     await go(s);
