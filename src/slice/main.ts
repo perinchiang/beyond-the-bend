@@ -177,7 +177,7 @@ async function boot() {
   console.info(`[slice] map built in ${buildMs.toFixed(0)} ms: ${world.roads.reduce((a, r) => a + r.length, 0).toFixed(0)} m of road, ${world.trees.length} trees`);
   // For automated checks and screenshots.
   (window as unknown as Record<string, unknown>).__slice = {
-    ready: true, world, vehicle, rig, renderer, buildMs,
+    ready: true, world, vehicle, rig, renderer, audio, buildMs,
     teleport, recover,
     setAutopilot(on: boolean) { autopilot = on && pilot.attach(vehicle); return autopilot; },
     frameMs: () => frameMs,

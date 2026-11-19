@@ -16,6 +16,7 @@ export class Input {
   private keys = new Set<string>();
   private queue: string[] = [];
   private padWas: boolean[] = [];
+  private padActive = false;
   /** 'keyboard' or 'gamepad': whichever steered last. */
   device = 'keyboard';
 
@@ -54,7 +55,15 @@ export class Input {
         if (down && !this.padWas[+b]) this.queue.push(action);
         this.padWas[+b] = down;
       }
-    } else if (steer !== 0) this.device = 'keyboard';
+      // Any use of the pad counts as a first gesture too (it starts the sound), each time the
+      // pad goes from idle to in use: a player may never touch the keyboard.
+      const active = stick !== 0 || pad.buttons.some((q) => q.pressed || q.value > 0.1);
+      if (active && !this.padActive) this.queue.push('gesture');
+      this.padActive = active;
+    } else {
+      this.padActive = false;
+      if (steer !== 0) this.device = 'keyboard';
+    }
     out.throttle = throttle; out.brake = brake; out.steer = steer; out.handbrake = handbrake; out.digital = digital;
     return out;
   }

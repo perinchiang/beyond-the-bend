@@ -14,9 +14,20 @@ export class SliceAudio {
   private wind?: GainNode;
   muted = false;
 
-  /** Browsers only allow sound after a key press or click. */
+  /** 'none' before the first gesture, then the audio context's state. */
+  get state(): string { return this.ctx?.state ?? 'none'; }
+
+  /**
+   * Call on every input gesture. Browsers only let sound start from one; a context created
+   * from a gesture they do not count (some do not count gamepad buttons) stays suspended, so
+   * later gestures try again.
+   */
   start() {
-    if (this.ctx || this.muted) return;
+    if (this.muted) return;
+    if (this.ctx) {
+      if (this.ctx.state === 'suspended') void this.ctx.resume().catch(() => {});
+      return;
+    }
     const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext: typeof AudioContext }).webkitAudioContext;
     if (!Ctx) return;
     const ctx = this.ctx = new Ctx();
