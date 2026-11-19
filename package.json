@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "vite",
-    "build": "tsc --noEmit && vite build",
+    "build": "tsc --noEmit && node tools/build.mjs",
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "car": "blender -b --python tools/blender/build_car.py -- public/models/car.glb",
@@ -17,7 +17,9 @@
     "test:drive": "node tools/hud-check.mjs && node tools/session-clock-check.mjs",
     "test:stability": "node tools/stability.mjs",
     "package:desktop": "npm run build && node tools/desktop/package.mjs",
-    "test:journey": "node tools/journey-check.mjs"
+    "test:journey": "node tools/journey-check.mjs",
+    "test:slice": "node tools/slice-world.mjs && node tools/slice-handling.mjs",
+    "shots:slice": "node tools/slice-shoot.mjs"
   },
   "dependencies": {
     "three": "^0.187.0"
