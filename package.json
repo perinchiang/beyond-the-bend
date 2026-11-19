@@ -19,7 +19,8 @@
     "package:desktop": "npm run build && node tools/desktop/package.mjs",
     "test:journey": "node tools/journey-check.mjs",
     "test:slice": "node tools/slice-world.mjs && node tools/slice-handling.mjs",
-    "shots:slice": "node tools/slice-shoot.mjs"
+    "shots:slice": "node tools/slice-shoot.mjs",
+    "shots:looks": "node tools/slice-looks.mjs"
   },
   "dependencies": {
     "three": "^0.187.0"
