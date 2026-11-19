@@ -1,8 +1,35 @@
 # Beyond the Bend
 
-A cute, gouache-painted 2.5D driving game about taking jobs and travelling through changing landscapes. The current build is a drivable countryside prototype. The [design roadmap](ROADMAP.md) tracks the first playable journey and the next design priority.
+A scenic free-driving and exploration game in development. Landscapes invite you to set off; driving makes you want to keep going. The current countryside prototype contains experiments that do not yet fully match this direction.
 
-Stack: Three.js (r187) · TypeScript · WebGL 2 · Vite · Blender Python → GLB.
+## 项目定调 / Current direction · 2026-11-19
+
+> 风景吸引我出发，驾驶让我不想停车。
+
+### 已确认的体验目标
+
+- **驾驶乐趣与自由探索并重。** 玩家可以选择岔路、绕路、掉头、停留；出发首先因为想开车、想接近一处风景，不以接单、交付或金币作为基本动机。参考《极限竞速：地平线》的自由与旷野感，不承诺同等地图规模或制作体量。
+- **开阔、田野感强的巡游节奏。** 大部分时间是能持续踩油门加速的直路、长缓弯与起伏路段；普通缓弯轻微松油即可通过；偶尔出现连续的大 S 弯，让可控漂移成为技巧点，而不是每个弯都要求急刹或漂移。
+- **地形参与驾驶。** 长坡、坡顶、谷地与不同生态应带来视野和驾驶变化；车辆应有接地、随坡俯仰、适当条件下腾空与落地的反馈。这些是目标，不代表当前车辆已经有完整离地物理。
+- **自然风景是主角。** 大部分画面由地形、田野、树群、水体、天空和远景构成。建筑尽量少，以远处、低存在感的风景点缀为主；不建设密集近景村镇，不用巨大邮局标识或任务图标组织风景。
+
+### 美术与生产边界
+
+- **保留现有地面中已被认可的绘画表现作为起点。** 延续其大色块、克制笔触、随地形变化的冷暖与空间层次；先解决树、岩石等与它不协调的问题。不要为了让新资产显得协调，先重画整片地面或用重调色、强景深掩盖问题。第一步仍需保存并确认具体基准画面。
+- **环境美术以代码为主，尽量少依赖手工建模。** 允许程序生成网格、枝干与树冠、Canvas/Shader 笔触与纹理、参数化变体和有规则的摆放。这里的“纯代码优先”不是“没有 3D 形体”，也不是随意堆球、撒噪声或复制同一张树图。
+- **车辆允许建模。** 可以保留或改进现有 Blender → GLB 车辆管线；环境不因此转成大量逐件手工建模。建筑即使采用简单程序形体，也服从少量、远景、不抢主体的约束。
+- **原始视觉参考是 [notjignes 的风景作品](https://x.com/notjignes/status/2113958988949942538)。** 参考色域、笔触、形体简化与整体一致性，不把其高俯视展示镜头直接当成驾驶镜头，也不宣称作者所有资产均由纯代码生成。Art of Rally 等漂亮截图不等于已批准替换当前画风。
+- **完整环境画风与具体算法仍需实机验证。** “水粉”“油画”“低模”“微缩模型”都不能单独充当验收标准；生图素材、第三方生成器或新 Shader 都只是候选工具，不自动代表更接近目标。外部资源复用须核实许可。
+
+### 当前原型不等于最终定位
+
+现有送货、人物对白、金币、车库、通行进度、邮局村舍以及分区美术是已实现的实验；是否保留另行评估。它们不构成继续扩展送货主循环、近景建筑或城镇玩法的默认授权。本次定调不删除这些实现，也不宣称全世界的美术已经统一。
+
+下一步按 [程序化绘画美术研究与验证 issue #3](https://github.com/perinchiang/beyond-the-bend/issues/3) 工作：先固定地面基准，在同一地面、光照与正常驾驶镜头下比较少量资产样板；通过视觉、动态稳定性与性能检查，并由 Patrick 确认样板后，才推广到整条路线与更多生态。研究结论、样板结果和已确认方向必须分开记录。
+
+**文档优先级：** Patrick 最新明确要求 → 本节已确认目标 → 上述 issue 的研究与验收记录。旧 [ROADMAP.md](ROADMAP.md) 保留历史实验与待办，其“接差事为主线”“玩法/正式画风全部已确定”及旧排期不再代表当前定调；开始后续实施前需对齐。以下运行方法、控制、镜头数值和渲染说明描述当前版本，不是对最终设计的承诺。讨论候选方案不能被记录为用户已经批准，新增功能不能反过来定义游戏。
+
+Stack: Three.js (r187) · TypeScript · WebGL 2 · Vite. Environment: code-first procedural geometry and shaders; vehicle exception: Blender Python → GLB.
 
 ## Run
 
@@ -13,7 +40,7 @@ npm run build        # type-check + production bundle
 npm run car          # regenerate public/models/car.glb with Blender (needs `blender` on PATH)
 ```
 
-## Controls
+## Controls (current prototype)
 
 | | |
 |---|---|
@@ -29,6 +56,10 @@ npm run car          # regenerate public/models/car.glb with Blender (needs `ble
 Driving sound starts on the first keyboard or touch gesture. Web Audio synthesizes the engine, tyre noise and grass rustle from the car’s speed, throttle and ground contact. Open **Pause** to freeze the drive and mute driving sounds. **Resume drive** continues from the same position and speed. The mute preference is remembered on this device.
 
 The upper-left HUD shows speed in km/h and a north-up road map. The red arrow tracks the car, including off-road, and the diamond marks the current destination. Tap **Map** to collapse it. With `?debug=1`, the upper-right **Debug** selector lists the build ID and travel points for all routes.
+
+### Existing route and delivery experiment
+
+The following describes how the existing experiment works, not a required delivery-first player journey.
 
 The main entrance starts in Close view at the village exit. Follow the hayfield road through its broad bend to the clock tower at Foothill Station (306 m), then keep driving to return through the hills. Stop by the village envelope sign, choose **Talk to Mara** (or press **E**), then sign for the station parcel. You can leave the counter before signing. The first station delivery earns 100 coins. Bring the porter's timetables back to Mara for a stamped receipt and another 35 coins. The pause menu holds the guide switch, garage, engine tune and unlocked passes. Return mail offers a trip back to town. At the end of the rice fields the left fork leads through Cedar Pass to the old sawmill. This 303 m gravel road crosses a timber bridge over Mill Brook and rejoins the original road on the north ridge. The first delivery adds guidance through the fields; the physical junction is always open. The remaining districts and Sunset Arcade are separate playable studies reached at their marked exits. The old hill sprint starts at the meadow bend. The local logbook saves purchases, deliveries and event records. Reloading starts the current map at its entrance. Use `?route=circuit` for the earlier road layout in gouache. For the earlier diorama, use `?study=original`. The [Close comparison](public/studies/close.html) includes the oil, print and gouache studies.
 
@@ -81,8 +112,9 @@ swinging round behind the car — distant land slides across like an ordinary pa
 [art of rally](https://store.steampowered.com/app/550320/art_of_rally/) and
 [Absolute Drift](https://store.steampowered.com/app/320140/Absolute_Drift/) were the references:
 both look down through a perspective lens from high behind or above the car, keep the route
-readable and keep camera motion smooth. This game keeps its three driving presets and painted
-diorama look, and adds what that lens needs: aerial haze so distance reads as distance, shadows
+readable and keep camera motion smooth. These were references for the existing lens and camera
+comfort, not approval to replace the art direction. The current implementation has three driving
+presets and adds aerial haze so distance reads as distance, shadows
 fitted to the lens's footprint, and a stippled dissolve for any tree crown that drifts between
 the lens and the car. Handling and input mapping are unchanged.
 
@@ -106,9 +138,12 @@ A simple arcade model, tuned to be forgiving with all-or-nothing inputs (keys, t
 Acceleration, top speed and braking are as before. `npm run test:handling` measures all of
 this and laps the road with a tap-steering keyboard driver that has human reaction time.
 
-## How the picture is made
+## How the picture is made (current implementation)
 
-At the village post office, a pale clay pull-in leads from the asphalt to the parcel counter beneath a double-sided envelope sign. The four cottages and the orchard use a local gouache treatment. Pigment follows the plaster and roof planes. Along the road, white birches alternate between a swept crown, an open fork and a taller leader; oaks spread sideways and limes grow upright. The [paint on each bough](src/art/postal-orchard.md) supplies its edge and brush marks, while the scene's sun places the gold on the lit side, even on the return drive. The two small pigment and foliage textures are embedded in the build, including the offline version. The station, hills and other routes keep their existing art.
+This is an inventory of the current mixed implementation, not a claim that every asset already
+matches the ground. The terrain's layered washes and restrained strokes are the starting point
+for the research issue. Sharing `paintMaterial()` does not automatically give trees, props and
+cars the terrain's paint treatment: their geometry, colour hooks and lighting adjustments differ.
 
 | Layer | Source |
 |---|---|
@@ -119,8 +154,12 @@ At the village post office, a pale clay pull-in leads from the asphalt to the pa
 | Vegetation, rocks | Round-shouldered oak, lime and plum crowns on painted bark, open fir boughs and arching thorn shoots use species-specific silhouettes and painted edges. Low fieldstone ledges share a broken mineral seam across their faces, with moss and grass at the base. Geometry is instanced in 100 m chunks. |
 | Roadside | Delineator posts, corner chevrons (placed from spline curvature), post-and-rail fences — one merged mesh. |
 | Car | `tools/blender/build_car.py`: a lofted hatchback shell from hand-tuned cross-sections, boolean wheel wells, arch flares, inset glazing, lamps, bumpers, spoiler, lamp pod, separate spoked wheels (~6k triangles). Colours are assigned in code by material name. |
-| Light | One warm directional sun with a texel-snapped PCF shadow map, cool hemisphere fill. Foliage is lit by its volume normals and does not receive shadow-map shadows. |
+| Light | One warm directional sun with a texel-snapped PCF shadow map and cool hemisphere fill. Tree crowns use authored volume normals and do not receive shadow-map shadows; shrubs, ground cover, rocks and buildings have separate shadow settings. |
 | Lens | A 30–36° perspective lens with aerial haze beyond the focal plane. One post chain: half-resolution tilt-shift blur, soft highlight roll-off, mild grade and vignette. |
+
+### Existing village art experiment
+
+At the village post office, a pale clay pull-in leads from the asphalt to the parcel counter beneath a double-sided envelope sign. The four cottages and the orchard use a local gouache treatment. Pigment follows the plaster and roof planes. Along the road, white birches alternate between a swept crown, an open fork and a taller leader; oaks spread sideways and limes grow upright. The [paint on each bough](src/art/postal-orchard.md) supplies its edge and brush marks, while the scene's sun places the gold on the lit side, even on the return drive. The two small pigment and foliage textures are embedded in the build, including the offline version. The station, hills and other routes keep their existing art. This local treatment, including its generated-image foliage atlas, is an experiment to evaluate, not the default production standard for future environments.
 
 ## Checks
 
@@ -140,12 +179,12 @@ The browser tools read `BTB_URL` (default `http://127.0.0.1:5183/beyond-the-bend
 ## Known limitations
 
 - Desktop Chrome checks cover synthetic touch input and mobile-sized layouts. **Not tested on real iPhone Safari**; native multi-touch capture, notch safe areas and sustained performance still need device testing.
-- Driving is a deliberately simple arcade model with no collisions and no sliding; trees and props are not solid.
+- Driving uses a simple arcade model with a separate handbrake/slip implementation; trees and props are not solid. The current car follows sampled terrain height rather than simulating a complete airborne/suspension cycle. Convincing crest take-off and landing remain targets to implement and validate.
 - In the Close view a tree crown between the lens and the car is thinned out in stipples rather
   than hidden cleanly, and the diorama's paper edge can show at the top of the frame as a pale sky.
 - Trees are not shadowed by other trees, there is no level-of-detail for foliage, and the leaf dabs
   look blocky in extreme close-up.
-- One small world (400 m square), one biome, one car.
+- A small main map plus separate regional studies, not a broad continuous multi-biome world. Vehicle variants reuse the base car GLB; they are not a collection of independently modelled cars. Large-world streaming and sustained target-device performance remain unvalidated.
 
 ## Play on mobile
 
@@ -194,3 +233,4 @@ simultaneous inputs, independent releases, pointer cancellation/capture-loss eve
 camera buttons, desktop keys, camera/vehicle independence, control bounds and the GLB path.
 It temporarily stubs capture for synthetic pointers and forces coarse-pointer CSS for inspection;
 reload after running. It does not prove native Safari pointer capture or real-device performance.
+
