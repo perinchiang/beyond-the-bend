@@ -5,7 +5,7 @@ import type { VehicleInput } from './vehicle/vehicle';
  * (reset, camera, teleport…) is queued as a named action on the press.
  */
 const KEY_ACTIONS: Record<string, string> = {
-  KeyR: 'reset', KeyV: 'camera', KeyC: 'camera', KeyP: 'autopilot', KeyM: 'map', KeyH: 'help',
+  KeyR: 'reset', KeyV: 'camera', KeyC: 'camera', KeyP: 'autopilot', KeyM: 'map', KeyH: 'help', KeyL: 'look',
   Escape: 'pause', F3: 'stats', Backquote: 'stats',
 };
 /** Gamepad buttons (standard mapping): Y, RB, LB, View, Menu. */

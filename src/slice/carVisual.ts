@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 import { LIVERY } from '../vehicle/livery';
 import type { Vehicle } from './vehicle/vehicle';
+import { Look, surfaceMaterial } from './render/looks';
 
 /**
  * The existing hatchback model, flat-shaded, posed from the physics every frame: body from the
@@ -16,7 +17,7 @@ export class CarVisual {
   private body = new THREE.Group();
   private wheels: ({ pivot: THREE.Group; spin: THREE.Object3D; restY: number } | undefined)[] = [];
 
-  constructor() {
+  constructor(private look: Look) {
     this.body.rotation.y = -Math.PI / 2; // model +X forward -> rig +Z forward
     this.root.add(this.body);
   }
@@ -31,7 +32,7 @@ export class CarVisual {
         let m = mats.get(src.name);
         if (!m) {
           const def = LIVERY[src.name] ?? { color: '#ff00ff' };
-          m = new THREE.MeshLambertMaterial({ color: def.color, emissive: def.emissive ?? '#000000' });
+          m = surfaceMaterial(this.look, { color: def.color, emissive: def.emissive ?? '#000000' });
           mats.set(src.name, m);
         }
         return m;

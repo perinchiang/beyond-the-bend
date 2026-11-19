@@ -5,7 +5,9 @@ import { SliceCamera, VIEWS } from './camera';
 import { CarVisual } from './carVisual';
 import { Hud } from './hud';
 import { Input } from './input';
-import { SKY, SUN_DIR, buildProps, buildRoads, buildSky, buildWater } from './render/sceneParts';
+import { LOOKS, applyFogBands, lookById, sunDirection } from './render/looks';
+import { SlicePost } from './render/post';
+import { buildProps, buildRoads, buildSky, buildWater } from './render/sceneParts';
 import { TerrainMesh } from './render/terrainMesh';
 import { Vehicle, VehicleInput } from './vehicle/vehicle';
 import { SPAWNS } from './world/network';
@@ -18,8 +20,8 @@ import { Pose, RoadHit, World } from './world/world';
  * art is made: is the map the right shape, is the car good to drive, and does a world this size
  * run on the hardware a Steam release has to support.
  *
- * URL options: ?spawn=1..7  ?view=0|1|2  ?stats=1  ?auto=1 (autopilot)  ?dpr=<max pixel ratio>
- *              ?shadows=0  ?mute=1  ?hud=0
+ * URL options: ?look=graybox|flat|gouache|print  ?spawn=1..7  ?at=x,z,headingDeg  ?view=0|1|2
+ *              ?stats=1  ?auto=1 (autopilot)  ?dpr=<max pixel ratio>  ?shadows=0  ?mute=1  ?hud=0
  */
 const params = new URLSearchParams(location.search);
 const num = (k: string, d: number) => (params.has(k) && Number.isFinite(Number(params.get(k))) ? Number(params.get(k)) : d);
@@ -37,15 +39,21 @@ async function boot() {
   renderer.shadowMap.enabled = shadows;
   renderer.shadowMap.type = THREE.PCFShadowMap;
 
-  const scene = new THREE.Scene();
-  scene.fog = new THREE.Fog(SKY.horizon, 700, 6800);
-  const sky = buildSky();
-  const terrain = new TerrainMesh(world);
-  const props = buildProps(world);
-  scene.add(sky, terrain.group, buildRoads(world), props.group, buildWater());
+  // The art direction: everything below is drawn through it.
+  const look = lookById(params.get('look')), sunDir = sunDirection(look);
+  applyFogBands(look);
+  renderer.info.autoReset = false;
+  const post = look.post ? new SlicePost(renderer, look.post) : null;
 
-  scene.add(new THREE.HemisphereLight('#e2ecf5', '#b7b0a0', 1.25));
-  const sun = new THREE.DirectionalLight('#fff3de', 2.5);
+  const scene = new THREE.Scene();
+  scene.fog = new THREE.Fog(look.fog.color, look.fog.near, look.fog.far);
+  const sky = buildSky(look);
+  const terrain = new TerrainMesh(world, look);
+  const props = buildProps(world, look);
+  scene.add(sky, terrain.group, buildRoads(world, look), props.group, buildWater(look));
+
+  scene.add(new THREE.HemisphereLight(look.light.sky, look.light.ground, look.light.fill));
+  const sun = new THREE.DirectionalLight(look.light.sun, look.light.sunPower);
   sun.castShadow = shadows;
   sun.shadow.mapSize.set(2048, 2048);
   Object.assign(sun.shadow.camera, { left: -24, right: 24, top: 24, bottom: -24, near: 20, far: 320 });
@@ -53,7 +61,7 @@ async function boot() {
   scene.add(sun, sun.target);
 
   const vehicle = new Vehicle(world, world);
-  const car = new CarVisual();
+  const car = new CarVisual(look);
   scene.add(car.root);
   const rig = new SliceCamera(world);
   rig.view = Math.min(VIEWS.length - 1, Math.max(0, num('view', 0)));
@@ -82,7 +90,18 @@ async function boot() {
   };
 
   let autopilot = params.get('auto') === '1', paused = false, best = 0;
-  place(world.spawnPose(SPAWNS.find((s) => s.key === (params.get('spawn') ?? '1')) ?? SPAWNS[0]));
+  const at = (params.get('at') ?? '').split(',').map(Number);
+  if (at.length === 3 && at.every(Number.isFinite)) place({ x: at[0], z: at[1], heading: at[2] / 57.29578 });
+  else place(world.spawnPose(SPAWNS.find((s) => s.key === (params.get('spawn') ?? '1')) ?? SPAWNS[0]));
+  /** Reload into another look at the same place, so two looks can be compared on one view. */
+  const switchLook = (id: string) => {
+    const q = new URLSearchParams(location.search);
+    q.set('look', id);
+    q.set('at', `${vehicle.position.x.toFixed(1)},${vehicle.position.z.toFixed(1)},${(vehicle.heading * 57.29578).toFixed(1)}`);
+    q.set('view', String(rig.view));
+    q.delete('spawn');
+    location.search = q.toString();
+  };
   if (autopilot) pilot.attach(vehicle);
 
   // Things worth a message: jumps, slides, and the speed trap at the end of the south straight.
@@ -110,6 +129,7 @@ async function boot() {
   const resize = () => {
     renderer.setPixelRatio(Math.min(devicePixelRatio, maxDpr));
     renderer.setSize(innerWidth, innerHeight, false);
+    post?.setSize(innerWidth, innerHeight, renderer.getPixelRatio());
     rig.resize(innerWidth, innerHeight);
   };
   addEventListener('resize', resize);
@@ -126,6 +146,7 @@ async function boot() {
       audio.start();
       if (a === 'reset') recover();
       else if (a === 'camera') { rig.cycle(); hud.toast(VIEWS[rig.view], 1.2); }
+      else if (a === 'look') switchLook(LOOKS[(LOOKS.indexOf(look) + 1) % LOOKS.length].id);
       else if (a === 'map') hud.toggleMap();
       else if (a === 'help') hud.toggleHelp();
       else if (a === 'stats') hud.showStats = !hud.showStats;
@@ -149,9 +170,10 @@ async function boot() {
     terrain.update(cam.position.x, cam.position.z);
     props.update(cam.position.x, cam.position.z);
     sun.target.position.set(vehicle.position.x, vehicle.position.y, vehicle.position.z);
-    sun.position.copy(sun.target.position).addScaledVector(SUN_DIR, -160);
+    sun.position.copy(sun.target.position).addScaledVector(sunDir, -160);
     audio.update(vehicle, drive.throttle, paused);
-    renderer.render(scene, cam);
+    renderer.info.reset();
+    if (post) post.render(scene, cam); else renderer.render(scene, cam);
     hud.update(vehicle, {
       view: VIEWS[rig.view], autopilot, paused, device: input.device, frameMs,
       calls: renderer.info.render.calls, triangles: renderer.info.render.triangles, terrainTris: terrain.triangles, best,
@@ -174,10 +196,13 @@ async function boot() {
     for (const o of unculled) o.frustumCulled = true;
   }
   hud.setStatus('');
+  if (look.id !== 'graybox') hud.toast(`${look.name}  ·  L for the next look`, 3.5);
   console.info(`[slice] map built in ${buildMs.toFixed(0)} ms: ${world.roads.reduce((a, r) => a + r.length, 0).toFixed(0)} m of road, ${world.trees.length} trees`);
   // For automated checks and screenshots.
   (window as unknown as Record<string, unknown>).__slice = {
-    ready: true, world, vehicle, rig, renderer, audio, buildMs,
+    ready: true, world, vehicle, rig, renderer, audio, buildMs, look: look.id,
+    /** Stand the car on the named road at the point nearest (x, z). */
+    placeOnRoad(id: string, x: number, z: number, reverse = false) { const r = world.road(id); place(world.poseOn(r, world.nearestSample(r, x, z), reverse)); },
     teleport, recover,
     setAutopilot(on: boolean) { autopilot = on && pilot.attach(vehicle); return autopilot; },
     frameMs: () => frameMs,
