@@ -166,7 +166,7 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
   const woodyPlants = new Batcher(), rocks = new Batcher(), cover = new Batcher();
   const shrubs = study ? new Batcher() : woodyPlants;
   const bark = new Batcher(), brushes = new Batcher(), grass = new Batcher();
-  const orchard = postal ? postalOrchard(shared,swayVertex) : undefined;
+  const orchard = postal ? postalOrchard(shared, swayVertex, postal) : undefined;
   const orchardPlants = new Batcher();
   const patches: GroundPatch[] = [];
   const placed: { x: number; z: number; r: number }[] = [];
@@ -199,17 +199,20 @@ export function buildScatter(track: Track, hf: HeightField, shared: PaintShared,
         m.makeTranslation(p.x, p.y, p.z);
         tint.setRGB(1, 1, 1);
       }
-      bark.add('birch', trunk, m, tint);
       if (inVillage) {
-        const round = Math.sin(x*.53+z*.19)>0;
-        orchardPlants.add(round ? 'roundBirch' : 'birch',round ? orchard.roundBirch : orchard.birch,m,tint);
-      } else brushes.add('birch', geos[vi], m, tint);
+        const crown = orchard.birchAt(x, z);
+        bark.add('postal-birch', orchard.trunk, m, tint);
+        orchardPlants.add(crown.name, crown, m, tint);
+      } else {
+        bark.add('birch', trunk, m, tint);
+        brushes.add('birch', geos[vi], m, tint);
+      }
     } else if (inVillage && (sp === 'bush' || sp === 'bloom')) {
       const drift = .5+.5*Math.sin(x*.44+z*.17);
       const mass = m.clone().scale(new THREE.Vector3(1.05+.46*drift, .48+.54*drift, 1.0+.31*drift));
       orchardPlants.add('hedge',orchard.hedge,mass,tint);
     } else if (inVillage && (sp === 'oak' || sp === 'lime')) {
-      orchardPlants.add('broad',orchard.broad,m,tint);
+      orchardPlants.add(sp, orchard[sp], m, tint);
     } else if (sp === 'rock' && Math.hypot(x - STUDY_STONE.x, z - STUDY_STONE.y) < 0.6) {
       m.makeTranslation(x, hf.height(x, z), z);
       tint.setRGB(1, 1, 1);

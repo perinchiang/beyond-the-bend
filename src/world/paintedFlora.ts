@@ -124,12 +124,12 @@ export function birchCrown(lowSpec: boolean) {
   return crownGeometry(crowns, 352, ['#668765', '#acc45f', '#e3df86'], lowSpec ? 66 : 106, lowSpec ? 1.11 : 1);
 }
 
-export function birchTrunk() {
+export function birchTrunk(leaderTip = 9.3) {
   const b = new Builder(), bark = C('#e7ddba'), warm = C('#c2b898'), twig = C('#786e5b');
   const limb = (points: number[][], sides: number) => tube(b,
     points.map(([x,y,z,r]) => ({ p: new V(x,y,z), r, c: r > 0.16 ? bark : r > 0.08 ? warm : twig })), sides);
   limb([[0,-0.20,0,0.33],[0,0.22,0,0.26],[0.08,2.1,0.05,0.22],[0.22,3.6,0.19,0.18],
-    [0.21,5.4,0.50,0.145],[0.50,7.2,0.48,0.10],[0.45,9.3,0,0.035]], 14);
+    [0.21,5.4,0.50,0.145],[0.50,7.2,0.48,0.10],[0.45,leaderTip,0,0.035]], 14);
   limb([[0.15,2.98,0.15,0.145],[-0.12,3.82,-0.61,0.12],[-0.52,4.5,-1.52,0.09],[-0.77,5.5,-2.55,0.04]], 9);
   limb([[0.22,4.52,0.33,0.14],[0.18,5.19,1.28,0.11],[0.11,5.93,2.04,0.08],[0.08,6.57,2.74,0.035]], 9);
   limb([[0.26,5.62,0.50,0.11],[0.81,6.28,0.03,0.085],[1.19,7.25,-0.94,0.035]], 7);

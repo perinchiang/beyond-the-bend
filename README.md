@@ -108,7 +108,7 @@ this and laps the road with a tap-steering keyboard driver that has human reacti
 
 ## How the picture is made
 
-At the village post office, a pale clay pull-in leads from the asphalt to the parcel counter beneath a double-sided envelope sign. The four cottages and the orchard use a local gouache treatment: pigment follows the plaster and roof planes, while painted clusters sit on separate branch tips and overlap as the car turns. The two small pigment and foliage textures are embedded in the build, including the offline version. The station, hills and other routes keep their existing art.
+At the village post office, a pale clay pull-in leads from the asphalt to the parcel counter beneath a double-sided envelope sign. The four cottages and the orchard use a local gouache treatment. Pigment follows the plaster and roof planes. Along the road, white birches alternate between a swept crown, an open fork and a taller leader; oaks spread sideways and limes grow upright. The [paint on each bough](src/art/postal-orchard.md) supplies its edge and brush marks, while the scene's sun places the gold on the lit side, even on the return drive. The two small pigment and foliage textures are embedded in the build, including the offline version. The station, hills and other routes keep their existing art.
 
 | Layer | Source |
 |---|---|
@@ -127,6 +127,7 @@ At the village post office, a pale clay pull-in leads from the asphalt to the pa
 ```bash
 npm run shots                 # capture review screenshots into shots/ (needs dev server + Chrome)
 node tools/observe.mjs        # drive a stretch on autopilot and tile the frames into a filmstrip
+node tools/postal-light-check.mjs # check the same crown under sunlight from opposite sides
 node tools/camera-test.mjs    # camera modes, presets, transitions, vehicle independence
 node tools/stability.mjs      # pan the camera a whole number of pixels and compare re-aligned frames
 npm run test:comfort          # view turning, what the lens does to distance and to turns, terrain profile

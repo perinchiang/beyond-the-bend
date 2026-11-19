@@ -23,11 +23,14 @@ export function createPostalPaint(site: Site, cottages: Site[]) {
     uPostFrame: { value: new THREE.Vector4(site.x, site.z, sin, cos) },
   };
   // x is towards the asphalt from the post-office wall; z follows the drive.
+  function alongRoad(x: number, z: number) {
+    return (x-site.x)*sin + (z-site.z)*cos;
+  }
   function inOrchard(x: number, z: number) {
     const dx = x - site.x, dz = z - site.z;
-    return Math.hypot((dx*cos - dz*sin - 7) / WIDTH, (dx*sin + dz*cos + 3) / LENGTH) < 1.19;
+    return Math.hypot((dx*cos - dz*sin - 7) / WIDTH, (alongRoad(x,z) + 3) / LENGTH) < 1.19;
   }
-  return { uniforms, inOrchard };
+  return { uniforms, inOrchard, alongRoad };
 }
 export type PostalPaint = ReturnType<typeof createPostalPaint>;
 
